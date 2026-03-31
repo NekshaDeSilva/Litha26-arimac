@@ -1,4 +1,4 @@
-//Copirights (c) @NCloud inc.
+//Copirights 2023 (c) @NCloud inc.
 //All rights reserved.
 docBlockS();
 var currentAdParked_Linktree = 'https://greetmake.netlify.app';
