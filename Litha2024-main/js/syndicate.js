@@ -5,10 +5,55 @@ var database = firebase.database();
 var lithaLikeStorageKey = 'litha_user_likes_v2';
 var iVal = '';
 var imgVal = '';
+var imgFileVal = null;
 var pid;
 var refId;
 var enccodec;
 var scrollUnloadBitRta = 0;
+var postPublishInFlight = false;
+
+function getSupabaseClient() {
+    if (window.__lithaSupabaseClient) {
+        return window.__lithaSupabaseClient;
+    }
+    var cfg = window.__LITHA_SUPABASE_CONFIG || {};
+    if (window.supabase && window.supabase.createClient && cfg.url && cfg.anonKey) {
+        window.__lithaSupabaseClient = window.supabase.createClient(cfg.url, cfg.anonKey);
+        return window.__lithaSupabaseClient;
+    }
+    return null;
+}
+
+async function uploadPostImageToSupabase(postId, file) {
+    var client = getSupabaseClient();
+    if (!client) {
+        throw new Error('Supabase client not ready.');
+    }
+    if (!file) return '';
+
+    var bucket = window.LITHA_SUPABASE_POST_BUCKET || 'litha-posts';
+    var ext = (String(file.name || '').split('.').pop() || 'jpg').toLowerCase();
+    var filePath = 'posts/' + String(postId || Date.now()) + '-' + Date.now() + '.' + ext;
+
+    var uploadResponse = await client.storage
+        .from(bucket)
+        .upload(filePath, file, {
+            cacheControl: '3600',
+            upsert: false,
+            contentType: file.type || undefined
+        });
+
+    if (uploadResponse.error) {
+        throw uploadResponse.error;
+    }
+
+    var publicResult = client.storage.from(bucket).getPublicUrl(filePath);
+    var imageUrl = (((publicResult || {}).data || {}).publicUrl) || '';
+    if (!imageUrl) {
+        throw new Error('Unable to get public URL for uploaded image.');
+    }
+    return imageUrl;
+}
 
 function getLikeStore() {
     try {
@@ -239,6 +284,7 @@ function resetPostImagePreview() {
 
     var input = document.getElementById('lithaPostImageInput');
     if (input) input.value = '';
+    imgFileVal = null;
 }
 
 function showPostImagePreview(dataUrl, fileName) {
@@ -277,6 +323,7 @@ function bindPostComposerEvents() {
             var reader = new FileReader();
             reader.onload = function (ev) {
                 imgVal = ev.target.result;
+                imgFileVal = file;
                 showPostImagePreview(imgVal, file.name || 'Image');
             };
             reader.readAsDataURL(file);
@@ -306,6 +353,14 @@ lithaPop_cont_signIn();
 window.onload = function (e, l) {
     retirivePostsFromFirebase();
 
+    function clearAuthSession() {
+        enccodec = '';
+        try { localStorage.removeItem('userStatus'); } catch (err) {}
+        try { localStorage.removeItem('lithaUserKey'); } catch (err) {}
+        try { document.cookie = 'litha_userStatus=; path=/; max-age=0'; } catch (err) {}
+        try { document.cookie = 'litha_userKey=; path=/; max-age=0'; } catch (err) {}
+    }
+
     if (!urlParams.get('referenc')) {
         if (localStorage.getItem('apiAccess') || document.cookie.indexOf('litha_apiAccess=') !== -1) {
             l = localStorage.getItem('apiAccess') || decodeURIComponent((document.cookie.match(/(?:^|; )litha_apiAccess=([^;]*)/) || [])[1] || '');
@@ -317,12 +372,10 @@ window.onload = function (e, l) {
                 enccodec = '';
             }
 
-            if (!enccodec) {
-                enccodec = urlParams.get('userKey') || localStorage.getItem('lithaUserKey') || decodeURIComponent((document.cookie.match(/(?:^|; )litha_userKey=([^;]*)/) || [])[1] || '');
-            }
-
             if (enccodec) {
                 userProfileActive();
+            } else if (e) {
+                clearAuthSession();
             }
         }
     } else {
@@ -337,10 +390,6 @@ window.onload = function (e, l) {
 
         localStorage.setItem('userStatus', e);
 
-        if (!enccodec && urlParams.get('userKey')) {
-            enccodec = urlParams.get('userKey');
-        }
-
         try {
             document.cookie = 'litha_userStatus=' + encodeURIComponent(e) + '; path=/; max-age=' + (60 * 60 * 24 * 30);
         } catch (err) {}
@@ -349,7 +398,11 @@ window.onload = function (e, l) {
             document.cookie = 'litha_apiAccess=' + encodeURIComponent(l || '') + '; path=/; max-age=' + (60 * 60 * 24 * 30);
         } catch (err) {}
 
-        userProfileActive();
+        if (enccodec) {
+            userProfileActive();
+        } else {
+            clearAuthSession();
+        }
     }
 };
 
@@ -438,7 +491,7 @@ function scrollIntoViewNha(des) {
     document.querySelector(des).scrollIntoView();
 }
 
-function postCurrent() {
+async function postCurrent() {
     var textValue = String($('.lithaQ-profile-input-post_').val() || '').trim();
     iVal = textValue;
 
@@ -452,6 +505,10 @@ function postCurrent() {
         $('.lithaQ-profile-input-post_').attr('placeholder', 'Please type something or attach an image..');
         return;
     }
+    if (postPublishInFlight) {
+        return;
+    }
+    postPublishInFlight = true;
 
     pid = Math.floor(Math.random() * 889 * 774) + 'PID';
 
@@ -460,10 +517,27 @@ function postCurrent() {
         return new Date().toISOString();
     }
 
+    var imageUrl = imgVal || '';
+    if (imgFileVal) {
+        try {
+            imageUrl = await uploadPostImageToSupabase(pid, imgFileVal);
+        } catch (uploadError) {
+            var uploadMessage = String((uploadError && uploadError.message) || uploadError || '');
+            if (/bucket not found/i.test(uploadMessage)) {
+                imageUrl = imgVal || '';
+                alert('Supabase bucket not found. Publishing with inline image data for now.');
+            } else {
+                postPublishInFlight = false;
+                alert('Image upload failed. Please try again. ' + uploadMessage);
+                return;
+            }
+        }
+    }
+
     var payload = {
         id: pid,
         phrase: textValue,
-        image: imgVal || '',
+        image: imageUrl,
         likeCount: 0,
         authorKey: (userData && userData.userData && userData.userData.userKeyId) || enccodec || '',
         authorName: ((userData && userData.userData ? (userData.userData.Fname || '') + ' ' + (userData.userData.Lname || '') : 'User')).trim(),
@@ -476,7 +550,13 @@ function postCurrent() {
     };
 
     payload.data = buildPostHtml(payload, pid);
-    database.ref('/posts/' + pid).set({ postdata_: payload });
+    try {
+        await database.ref('/posts/' + pid).set({ postdata_: payload });
+    } catch (postError) {
+        postPublishInFlight = false;
+        alert('Post publish failed. ' + String(window.__LITHA_DB_LAST_ERROR || (postError && postError.message) || postError || 'Please retry.'));
+        return;
+    }
 
     var postTarget = $('.lithaQ-social-cen .lithaQ-box-parody').eq(0);
     postTarget.find('.loadingDiv-postsLoAD_preload-seek, .loadingDiv-postsLoadignAdd_preload-seek, .emptyState-posts').remove();
@@ -489,6 +569,7 @@ function postCurrent() {
     imgVal = '';
     iVal = '';
     resetPostImagePreview();
+    postPublishInFlight = false;
 }
 
 function retirivePostsFromFirebase() {
