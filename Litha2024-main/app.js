@@ -18,6 +18,7 @@ function checkFordoesListen(){
 checkFordoesListen();
 
 
+        $('.preLoaderAvrudu_Litha-cen').remove();
 
 const TRACK_LIBRARY = [
     {
