@@ -40,6 +40,42 @@
     };
   }
 
+  function normalizeUserRecord(row) {
+    const userDataFromPayload = (((row || {}).payload || {}).userData) || {};
+    const userData = {
+      userKeyId: row.user_key_id || userDataFromPayload.userKeyId || '',
+      Email: row.email || userDataFromPayload.Email || '',
+      passW: row.pass_hash || userDataFromPayload.passW || '',
+      Fname: row.first_name || userDataFromPayload.Fname || '',
+      Lname: row.last_name || userDataFromPayload.Lname || '',
+      bio: row.bio || userDataFromPayload.bio || 'Bio',
+      profileP: row.profile_p || userDataFromPayload.profileP || '',
+      accountStatus: Number(
+        row.account_status !== undefined ? row.account_status : (userDataFromPayload.accountStatus || 0)
+      )
+    };
+
+    return { userData: userData };
+  }
+
+  function buildUserUpsertPayload(userKey, data) {
+    const userData = ((data || {}).userData) || {};
+    const email = String(userData.Email || '').trim().toLowerCase();
+    if (!email) throw new Error('Email is required to create/update ncloud_users row.');
+
+    return {
+      user_key_id: userKey,
+      email: email,
+      pass_hash: String(userData.passW || ''),
+      first_name: String(userData.Fname || ''),
+      last_name: String(userData.Lname || ''),
+      bio: String(userData.bio || 'Bio'),
+      profile_p: String(userData.profileP || ''),
+      account_status: Number(userData.accountStatus || 0),
+      payload: { userData: Object.assign({}, userData, { Email: email, userKeyId: userKey }) }
+    };
+  }
+
   function normalizePath(path) {
     if (!path || path === '/') return '/';
     return path.startsWith('/') ? path : '/' + path;
@@ -75,11 +111,15 @@
       if (self.path === '/' && self._orderBy && self._orderBy.type === 'child' && self._orderBy.path === 'userData/Email') {
         const { data, error } = await client.rpc('ncloud_get_user_by_email', { login_email: self._equalTo });
         if (error) throw error;
-        pairs = (data || []).map(function (row) { return { key: row.user_key_id, value: row.payload }; });
+        pairs = (data || []).map(function (row) {
+          return { key: row.user_key_id, value: normalizeUserRecord(row) };
+        });
       } else if (self.path === '/' && self._orderBy && self._orderBy.type === 'key') {
         const { data, error } = await client.rpc('ncloud_get_user_by_key', { lookup_key: self._equalTo });
         if (error) throw error;
-        pairs = (data || []).map(function (row) { return { key: row.user_key_id, value: row.payload }; });
+        pairs = (data || []).map(function (row) {
+          return { key: row.user_key_id, value: normalizeUserRecord(row) };
+        });
       } else if (self.path === '/posts') {
         const { data, error } = await client
           .from('litha_posts')
@@ -124,7 +164,7 @@
 
     if (/^\/[^/]+$/.test(this.path) && this.path !== '/posts') {
       const userKey = this.path.split('/')[1];
-      const payload = { user_key_id: userKey, payload: data };
+      const payload = buildUserUpsertPayload(userKey, data);
       const { error } = await client.from('ncloud_users').upsert(payload, { onConflict: 'user_key_id' });
       setLastError(error);
       if (error) throw error;

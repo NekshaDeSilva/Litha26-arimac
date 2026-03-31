@@ -45,6 +45,36 @@
       }
     };
   }
+  function normalizeUserRecord(row) {
+    const userDataFromPayload = (((row || {}).payload || {}).userData) || {};
+    const userData = {
+      userKeyId: row.user_key_id || userDataFromPayload.userKeyId || '',
+      Email: row.email || userDataFromPayload.Email || '',
+      passW: row.pass_hash || userDataFromPayload.passW || '',
+      Fname: row.first_name || userDataFromPayload.Fname || '',
+      Lname: row.last_name || userDataFromPayload.Lname || '',
+      bio: row.bio || userDataFromPayload.bio || 'Bio',
+      profileP: row.profile_p || userDataFromPayload.profileP || '',
+      accountStatus: Number(row.account_status !== undefined ? row.account_status : (userDataFromPayload.accountStatus || 0))
+    };
+    return { userData: userData };
+  }
+  function buildUserUpsertPayload(userKey, data) {
+    const userData = ((data || {}).userData) || {};
+    const email = String(userData.Email || '').trim().toLowerCase();
+    if (!email) throw new Error('Email is required to create/update ncloud_users row.');
+    return {
+      user_key_id: userKey,
+      email: email,
+      pass_hash: String(userData.passW || ''),
+      first_name: String(userData.Fname || ''),
+      last_name: String(userData.Lname || ''),
+      bio: String(userData.bio || 'Bio'),
+      profile_p: String(userData.profileP || ''),
+      account_status: Number(userData.accountStatus || 0),
+      payload: { userData: Object.assign({}, userData, { Email: email, userKeyId: userKey }) }
+    };
+  }
   function normalizePath(path) {
     if (!path || path === '/') return '/';
     return path.startsWith('/') ? path : '/' + path;
@@ -103,14 +133,14 @@
         const pairs = await tryRemoteQuery(async function (client) {
           const { data, error } = await client.rpc('ncloud_get_user_by_email', { login_email: self._equalTo });
           if (error) throw error;
-          return mergePairs((data || []).map(function (row) { return { key: row.user_key_id, value: row.payload }; }), localUserPairsByEmail(self._equalTo));
+          return mergePairs((data || []).map(function (row) { return { key: row.user_key_id, value: normalizeUserRecord(row) }; }), localUserPairsByEmail(self._equalTo));
         }, function () { return localUserPairsByEmail(self._equalTo); });
         snapshot = makeSnapshotFromPairs(pairs);
       } else if (self.path === '/' && self._orderBy && self._orderBy.type === 'key') {
         const pairs = await tryRemoteQuery(async function (client) {
           const { data, error } = await client.rpc('ncloud_get_user_by_key', { lookup_key: self._equalTo });
           if (error) throw error;
-          return mergePairs((data || []).map(function (row) { return { key: row.user_key_id, value: row.payload }; }), localUserPairsByKey(self._equalTo));
+          return mergePairs((data || []).map(function (row) { return { key: row.user_key_id, value: normalizeUserRecord(row) }; }), localUserPairsByKey(self._equalTo));
         }, function () { return localUserPairsByKey(self._equalTo); });
         snapshot = makeSnapshotFromPairs(pairs);
       } else if (self.path === '/posts') {
@@ -156,9 +186,7 @@
       users[userKey] = data;
       setLocalUsers(users);
       await tryRemoteQuery(async function (client) {
-        const email = String((((data || {}).userData || {}).Email) || '').trim().toLowerCase();
-        if (!email) throw new Error('Email is required to create/update ncloud_users row.');
-        const payload = { user_key_id: userKey, email: email, payload: data };
+        const payload = buildUserUpsertPayload(userKey, data);
         const { error } = await client.from('ncloud_users').upsert(payload, { onConflict: 'user_key_id' });
         if (error) throw error;
         return true;
