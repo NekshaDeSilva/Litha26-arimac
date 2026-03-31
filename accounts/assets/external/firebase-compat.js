@@ -156,7 +156,9 @@
       users[userKey] = data;
       setLocalUsers(users);
       await tryRemoteQuery(async function (client) {
-        const payload = { user_key_id: userKey, payload: data };
+        const email = String((((data || {}).userData || {}).Email) || '').trim().toLowerCase();
+        if (!email) throw new Error('Email is required to create/update ncloud_users row.');
+        const payload = { user_key_id: userKey, email: email, payload: data };
         const { error } = await client.from('ncloud_users').upsert(payload, { onConflict: 'user_key_id' });
         if (error) throw error;
         return true;
