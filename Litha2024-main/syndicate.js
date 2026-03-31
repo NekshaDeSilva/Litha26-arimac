@@ -353,6 +353,14 @@ lithaPop_cont_signIn();
 window.onload = function (e, l) {
     retirivePostsFromFirebase();
 
+    function clearAuthSession() {
+        enccodec = '';
+        try { localStorage.removeItem('userStatus'); } catch (err) {}
+        try { localStorage.removeItem('lithaUserKey'); } catch (err) {}
+        try { document.cookie = 'litha_userStatus=; path=/; max-age=0'; } catch (err) {}
+        try { document.cookie = 'litha_userKey=; path=/; max-age=0'; } catch (err) {}
+    }
+
     if (!urlParams.get('referenc')) {
         if (localStorage.getItem('apiAccess') || document.cookie.indexOf('litha_apiAccess=') !== -1) {
             l = localStorage.getItem('apiAccess') || decodeURIComponent((document.cookie.match(/(?:^|; )litha_apiAccess=([^;]*)/) || [])[1] || '');
@@ -364,12 +372,10 @@ window.onload = function (e, l) {
                 enccodec = '';
             }
 
-            if (!enccodec) {
-                enccodec = urlParams.get('userKey') || localStorage.getItem('lithaUserKey') || decodeURIComponent((document.cookie.match(/(?:^|; )litha_userKey=([^;]*)/) || [])[1] || '');
-            }
-
             if (enccodec) {
                 userProfileActive();
+            } else if (e) {
+                clearAuthSession();
             }
         }
     } else {
@@ -384,10 +390,6 @@ window.onload = function (e, l) {
 
         localStorage.setItem('userStatus', e);
 
-        if (!enccodec && urlParams.get('userKey')) {
-            enccodec = urlParams.get('userKey');
-        }
-
         try {
             document.cookie = 'litha_userStatus=' + encodeURIComponent(e) + '; path=/; max-age=' + (60 * 60 * 24 * 30);
         } catch (err) {}
@@ -396,7 +398,11 @@ window.onload = function (e, l) {
             document.cookie = 'litha_apiAccess=' + encodeURIComponent(l || '') + '; path=/; max-age=' + (60 * 60 * 24 * 30);
         } catch (err) {}
 
-        userProfileActive();
+        if (enccodec) {
+            userProfileActive();
+        } else {
+            clearAuthSession();
+        }
     }
 };
 

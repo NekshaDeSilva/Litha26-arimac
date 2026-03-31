@@ -88,17 +88,21 @@
   }
   async function selectPostsCompat(client, postId) {
     if (postId) {
-      const primary = await client.from('litha_posts').select('id, postdata_').eq('id', postId).maybeSingle();
+      const primary = await client.from('litha_posts').select('id, postdata_, data, like_count').eq('id', postId).maybeSingle();
       if (!primary.error) return primary.data ? [{ id: primary.data.id, postdata_: normalizePostData(primary.data) }] : [];
-      const fallback = await client.from('litha_posts').select('id, data, like_count').eq('id', postId).maybeSingle();
-      if (fallback.error) throw primary.error;
-      return fallback.data ? [{ id: fallback.data.id, postdata_: normalizePostData(fallback.data) }] : [];
+      const fallbackA = await client.from('litha_posts').select('id, postdata_').eq('id', postId).maybeSingle();
+      if (!fallbackA.error) return fallbackA.data ? [{ id: fallbackA.data.id, postdata_: normalizePostData(fallbackA.data) }] : [];
+      const fallbackB = await client.from('litha_posts').select('id, data, like_count').eq('id', postId).maybeSingle();
+      if (fallbackB.error) throw primary.error;
+      return fallbackB.data ? [{ id: fallbackB.data.id, postdata_: normalizePostData(fallbackB.data) }] : [];
     }
-    const primary = await client.from('litha_posts').select('id, postdata_').order('created_at', { ascending: false });
+    const primary = await client.from('litha_posts').select('id, postdata_, data, like_count').order('created_at', { ascending: false });
     if (!primary.error) return (primary.data || []).map(function (row) { return { id: row.id, postdata_: normalizePostData(row) }; });
-    const fallback = await client.from('litha_posts').select('id, data, like_count').order('created_at', { ascending: false });
-    if (fallback.error) throw primary.error;
-    return (fallback.data || []).map(function (row) { return { id: row.id, postdata_: normalizePostData(row) }; });
+    const fallbackA = await client.from('litha_posts').select('id, postdata_').order('created_at', { ascending: false });
+    if (!fallbackA.error) return (fallbackA.data || []).map(function (row) { return { id: row.id, postdata_: normalizePostData(row) }; });
+    const fallbackB = await client.from('litha_posts').select('id, data, like_count').order('created_at', { ascending: false });
+    if (fallbackB.error) throw primary.error;
+    return (fallbackB.data || []).map(function (row) { return { id: row.id, postdata_: normalizePostData(row) }; });
   }
   async function upsertPostCompat(client, postId, postData) {
     const primary = await client.from('litha_posts').upsert({ id: postId, postdata_: postData || {} }, { onConflict: 'id' });
