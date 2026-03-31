@@ -223,12 +223,23 @@ function renderLeaderboard(posts) {
 
     (posts || []).forEach(function (row) {
         var p = (row || {}).postdata_ || row || {};
-        var key = p.authorKey || p.authorName || 'Unknown';
+        if ((!p.authorName || /^user$/i.test(String(p.authorName || '').trim())) && typeof p.data === 'string') {
+            var nameMatch = p.data.match(/lithaQ-post-syn-user[^>]*>([^<]+)/i);
+            if (nameMatch && nameMatch[1]) {
+                p.authorName = $('<div>').html(nameMatch[1]).text().trim();
+            }
+            var profileMatch = p.data.match(/lithaQ-post-syn-imgPro[^>]*background-image:url\(['"]?([^'")]+)/i);
+            if (profileMatch && profileMatch[1] && !p.authorProfile) {
+                p.authorProfile = profileMatch[1];
+            }
+        }
+
+        var key = p.authorKey || p.authorName || ('Unknown-' + (p.id || row.key || Math.random()));
 
         if (!scores[key]) {
             scores[key] = {
                 key: key,
-                name: p.authorName || 'User',
+                name: p.authorName || (p.authorKey ? ('User ' + String(p.authorKey).slice(0, 6)) : 'User'),
                 profile: p.authorProfile || '',
                 verified: Number(p.authorVerified || 0),
                 likes: 0
