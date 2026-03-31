@@ -15,6 +15,7 @@ var postFeedCache = [];
 var postFeedCursor = 0;
 var postFeedLoading = false;
 var postFeedRenderedMap = {};
+var postFeedAutoTimer = null;
 
 function getSupabaseClient() {
     if (window.__lithaSupabaseClient) {
@@ -692,10 +693,18 @@ function renderNextPostsFromCache(batchSize) {
     postFeedCursor += nextItems.length;
     retrievePostLikeCount();
     hydrateRenderedPosts();
-
     if (postFeedCursor < postFeedCache.length) {
-        postRoot.append('<div class="loadingDiv-postsLoadignAdd_preload-seek" onclick="retirivePostsFromFirebase();">Load More</div>');
+        scheduleNextPostLoad();
     }
+}
+
+function scheduleNextPostLoad() {
+    if (postFeedAutoTimer) {
+        clearTimeout(postFeedAutoTimer);
+    }
+    postFeedAutoTimer = setTimeout(function () {
+        renderNextPostsFromCache(1);
+    }, 180);
 }
 
 window.addEventListener('scroll', function () {
