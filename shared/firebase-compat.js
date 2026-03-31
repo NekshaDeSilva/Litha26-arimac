@@ -149,6 +149,18 @@
     if ((parsed.authorVerified === undefined || parsed.authorVerified === null) && profileRow) {
       parsed.authorVerified = profileRow.is_verified ? 1 : 0;
     }
+
+    if (!parsed.image && typeof parsed.phrase === 'string') {
+      var trimmedPhrase = parsed.phrase.trim();
+      if (/^[A-Za-z0-9+/=]{300,}$/.test(trimmedPhrase) && trimmedPhrase.indexOf(' ') === -1) {
+        parsed.image = 'data:image/jpeg;base64,' + trimmedPhrase;
+        parsed.phrase = '';
+      }
+    }
+
+    if (typeof parsed.phrase === 'string' && parsed.phrase.length > 1200 && !/\s/.test(parsed.phrase.slice(0, 300))) {
+      parsed.phrase = '';
+    }
     return parsed;
   }
 
