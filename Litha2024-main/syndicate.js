@@ -5,10 +5,60 @@ var database = firebase.database();
 var lithaLikeStorageKey = 'litha_user_likes_v2';
 var iVal = '';
 var imgVal = '';
+var imgFileVal = null;
 var pid;
 var refId;
 var enccodec;
 var scrollUnloadBitRta = 0;
+var postPublishInFlight = false;
+var postFeedCache = [];
+var postFeedCursor = 0;
+var postFeedLoading = false;
+var postFeedRenderedMap = {};
+var postFeedAutoTimer = null;
+
+function getSupabaseClient() {
+    if (window.__lithaSupabaseClient) {
+        return window.__lithaSupabaseClient;
+    }
+    var cfg = window.__LITHA_SUPABASE_CONFIG || {};
+    if (window.supabase && window.supabase.createClient && cfg.url && cfg.anonKey) {
+        window.__lithaSupabaseClient = window.supabase.createClient(cfg.url, cfg.anonKey);
+        return window.__lithaSupabaseClient;
+    }
+    return null;
+}
+
+async function uploadPostImageToSupabase(postId, file) {
+    var client = getSupabaseClient();
+    if (!client) {
+        throw new Error('Supabase client not ready.');
+    }
+    if (!file) return '';
+
+    var bucket = window.LITHA_SUPABASE_POST_BUCKET || 'litha-posts';
+    var ext = (String(file.name || '').split('.').pop() || 'jpg').toLowerCase();
+    var filePath = 'posts/' + String(postId || Date.now()) + '-' + Date.now() + '.' + ext;
+
+    var uploadResponse = await client.storage
+        .from(bucket)
+        .upload(filePath, file, {
+            cacheControl: '3600',
+            upsert: false,
+            contentType: file.type || undefined
+        });
+
+    if (uploadResponse.error) {
+        throw uploadResponse.error;
+    }
+
+    var publicResult = client.storage.from(bucket).getPublicUrl(filePath);
+    var imageUrl = (((publicResult || {}).data || {}).publicUrl) || '';
+    if (!imageUrl) {
+        throw new Error('Unable to get public URL for uploaded image.');
+    }
+    return imageUrl;
+}
 
 function getLikeStore() {
     try {
@@ -72,10 +122,9 @@ function escapeHtml(str) {
 }
 
 function postVerifiedBadgeMarkup() {
-    return `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="lithaQ-post-dvv-verified bi bi-patch-check-fill" viewBox="0 0 16 16" title="Verified">
-        <path d="M10.067.87a2.89 2.89 0 0 0-4.134 0l-.622.638-.89-.011a2.89 2.89 0 0 0-2.924 2.924l.01.89-.636.622a2.89 2.89 0 0 0 0 4.134l.637.622-.011.89a2.89 2.89 0 0 0 2.924 2.924l.89-.01.622.636a2.89 2.89 0 0 0 4.134 0l.622-.637.89.011a2.89 2.89 0 0 0 2.924-2.924l-.01-.89.636-.622a2.89 2.89 0 0 0 0-4.134l-.637-.622.011-.89a2.89 2.89 0 0 0-2.924-2.924l-.89.01z"></path>
-        <path d="M10.854 5.146a.5.5 0 0 1 0 .708L7.707 9 6.146 7.439a.5.5 0 1 0-.708.708l1.915 1.914a.5.5 0 0 0 .708 0l3.793-3.793a.5.5 0 0 0 0-.708"></path>
-    </svg>`;
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-patch-check-fill" viewBox="0 0 16 16">
+  <path d="M10.067.87a2.89 2.89 0 0 0-4.134 0l-.622.638-.89-.011a2.89 2.89 0 0 0-2.924 2.924l.01.89-.636.622a2.89 2.89 0 0 0 0 4.134l.637.622-.011.89a2.89 2.89 0 0 0 2.924 2.924l.89-.01.622.636a2.89 2.89 0 0 0 4.134 0l.622-.637.89.011a2.89 2.89 0 0 0 2.924-2.924l-.01-.89.636-.622a2.89 2.89 0 0 0 0-4.134l-.637-.622.011-.89a2.89 2.89 0 0 0-2.924-2.924l-.89.01zm.287 5.984-3 3a.5.5 0 0 1-.708 0l-1.5-1.5a.5.5 0 1 1 .708-.708L7 8.793l2.646-2.647a.5.5 0 0 1 .708.708"/>
+</svg>`;
 }
 
 function buildPostHtml(postData, postId) {
@@ -174,12 +223,23 @@ function renderLeaderboard(posts) {
 
     (posts || []).forEach(function (row) {
         var p = (row || {}).postdata_ || row || {};
-        var key = p.authorKey || p.authorName || 'Unknown';
+        if ((!p.authorName || /^user$/i.test(String(p.authorName || '').trim())) && typeof p.data === 'string') {
+            var nameMatch = p.data.match(/lithaQ-post-syn-user[^>]*>([^<]+)/i);
+            if (nameMatch && nameMatch[1]) {
+                p.authorName = $('<div>').html(nameMatch[1]).text().trim();
+            }
+            var profileMatch = p.data.match(/lithaQ-post-syn-imgPro[^>]*background-image:url\(['"]?([^'")]+)/i);
+            if (profileMatch && profileMatch[1] && !p.authorProfile) {
+                p.authorProfile = profileMatch[1];
+            }
+        }
+
+        var key = p.authorKey || p.authorName || ('Unknown-' + (p.id || row.key || Math.random()));
 
         if (!scores[key]) {
             scores[key] = {
                 key: key,
-                name: p.authorName || 'User',
+                name: p.authorName || (p.authorKey ? ('User ' + String(p.authorKey).slice(0, 6)) : 'User'),
                 profile: p.authorProfile || '',
                 verified: Number(p.authorVerified || 0),
                 likes: 0
@@ -191,8 +251,7 @@ function renderLeaderboard(posts) {
 
     var list = Object.keys(scores)
         .map(function (k) { return scores[k]; })
-        .sort(function (a, b) { return b.likes - a.likes; })
-        .slice(0, 10);
+        .sort(function (a, b) { return b.likes - a.likes; });
 
     var host = $('.magSpinner_role-inner');
     if (!host.length) return;
@@ -215,6 +274,7 @@ function renderLeaderboard(posts) {
         </div>`;
     });
     html += '</div>';
+    html += '<div class="leaderboard-total" style="margin-top:.5rem;opacity:.7;font-size:.85rem;">Creators ranked: ' + list.length + '</div>';
 
     host.html(html);
 }
@@ -240,6 +300,7 @@ function resetPostImagePreview() {
 
     var input = document.getElementById('lithaPostImageInput');
     if (input) input.value = '';
+    imgFileVal = null;
 }
 
 function showPostImagePreview(dataUrl, fileName) {
@@ -278,6 +339,7 @@ function bindPostComposerEvents() {
             var reader = new FileReader();
             reader.onload = function (ev) {
                 imgVal = ev.target.result;
+                imgFileVal = file;
                 showPostImagePreview(imgVal, file.name || 'Image');
             };
             reader.readAsDataURL(file);
@@ -307,6 +369,14 @@ lithaPop_cont_signIn();
 window.onload = function (e, l) {
     retirivePostsFromFirebase();
 
+    function clearAuthSession() {
+        enccodec = '';
+        try { localStorage.removeItem('userStatus'); } catch (err) {}
+        try { localStorage.removeItem('lithaUserKey'); } catch (err) {}
+        try { document.cookie = 'litha_userStatus=; path=/; max-age=0'; } catch (err) {}
+        try { document.cookie = 'litha_userKey=; path=/; max-age=0'; } catch (err) {}
+    }
+
     if (!urlParams.get('referenc')) {
         if (localStorage.getItem('apiAccess') || document.cookie.indexOf('litha_apiAccess=') !== -1) {
             l = localStorage.getItem('apiAccess') || decodeURIComponent((document.cookie.match(/(?:^|; )litha_apiAccess=([^;]*)/) || [])[1] || '');
@@ -318,12 +388,10 @@ window.onload = function (e, l) {
                 enccodec = '';
             }
 
-            if (!enccodec) {
-                enccodec = urlParams.get('userKey') || localStorage.getItem('lithaUserKey') || decodeURIComponent((document.cookie.match(/(?:^|; )litha_userKey=([^;]*)/) || [])[1] || '');
-            }
-
             if (enccodec) {
                 userProfileActive();
+            } else if (e) {
+                clearAuthSession();
             }
         }
     } else {
@@ -338,10 +406,6 @@ window.onload = function (e, l) {
 
         localStorage.setItem('userStatus', e);
 
-        if (!enccodec && urlParams.get('userKey')) {
-            enccodec = urlParams.get('userKey');
-        }
-
         try {
             document.cookie = 'litha_userStatus=' + encodeURIComponent(e) + '; path=/; max-age=' + (60 * 60 * 24 * 30);
         } catch (err) {}
@@ -350,7 +414,11 @@ window.onload = function (e, l) {
             document.cookie = 'litha_apiAccess=' + encodeURIComponent(l || '') + '; path=/; max-age=' + (60 * 60 * 24 * 30);
         } catch (err) {}
 
-        userProfileActive();
+        if (enccodec) {
+            userProfileActive();
+        } else {
+            clearAuthSession();
+        }
     }
 };
 
@@ -435,11 +503,45 @@ function userProfileActive() {
     });
 }
 
+async function fetchUserRecordByKey(userKey) {
+    if (!userKey) return null;
+    try {
+        var snapshot = await firebase.database().ref('/').orderByKey().equalTo(userKey).once('value');
+        var resolved = null;
+        if (snapshot && snapshot.exists()) {
+            snapshot.forEach(function (childSnapshot) {
+                var row = childSnapshot.val() || {};
+                resolved = row.userData || null;
+            });
+        }
+        return resolved;
+    } catch (err) {
+        return null;
+    }
+}
+
+async function hydratePostAuthorMeta(payload) {
+    payload = payload || {};
+    if ((payload.authorName && payload.authorProfile) || !payload.authorKey) {
+        return payload;
+    }
+
+    var userRow = await fetchUserRecordByKey(payload.authorKey);
+    if (!userRow) return payload;
+
+    payload.authorFirstName = payload.authorFirstName || userRow.Fname || '';
+    payload.authorLastName = payload.authorLastName || userRow.Lname || '';
+    payload.authorName = payload.authorName || ((userRow.Fname || '') + ' ' + (userRow.Lname || '')).trim() || 'User';
+    payload.authorProfile = payload.authorProfile || userRow.profileP || 'assests/neketh-vectors/person-fill.svg';
+    payload.authorVerified = Number(payload.authorVerified || userRow.accountStatus || 0);
+    return payload;
+}
+
 function scrollIntoViewNha(des) {
     document.querySelector(des).scrollIntoView();
 }
 
-function postCurrent() {
+async function postCurrent() {
     var textValue = String($('.lithaQ-profile-input-post_').val() || '').trim();
     iVal = textValue;
 
@@ -453,18 +555,46 @@ function postCurrent() {
         $('.lithaQ-profile-input-post_').attr('placeholder', 'Please type something or attach an image..');
         return;
     }
+    if (postPublishInFlight) {
+        return;
+    }
+    postPublishInFlight = true;
 
     pid = Math.floor(Math.random() * 889 * 774) + 'PID';
+
+    if ((!userData || !userData.userData) && enccodec) {
+        var fetchedUserData = await fetchUserRecordByKey(enccodec);
+        if (fetchedUserData) {
+            userData = { userData: fetchedUserData };
+        }
+    }
 
     function checkFcurrentTime_datePost() {
         // Return ISO string for accurate time difference calculation
         return new Date().toISOString();
     }
 
+    var imageUrl = imgVal || '';
+    if (imgFileVal) {
+        try {
+            imageUrl = await uploadPostImageToSupabase(pid, imgFileVal);
+        } catch (uploadError) {
+            var uploadMessage = String((uploadError && uploadError.message) || uploadError || '');
+            if (/bucket not found/i.test(uploadMessage)) {
+                imageUrl = imgVal || '';
+                alert('Supabase bucket not found. Publishing with inline image data for now.');
+            } else {
+                postPublishInFlight = false;
+                alert('Image upload failed. Please try again. ' + uploadMessage);
+                return;
+            }
+        }
+    }
+
     var payload = {
         id: pid,
         phrase: textValue,
-        image: imgVal || '',
+        image: imageUrl,
         likeCount: 0,
         authorKey: (userData && userData.userData && userData.userData.userKeyId) || enccodec || '',
         authorName: ((userData && userData.userData ? (userData.userData.Fname || '') + ' ' + (userData.userData.Lname || '') : 'User')).trim(),
@@ -477,7 +607,13 @@ function postCurrent() {
     };
 
     payload.data = buildPostHtml(payload, pid);
-    database.ref('/posts/' + pid).set({ postdata_: payload });
+    try {
+        await database.ref('/posts/' + pid).set({ postdata_: payload });
+    } catch (postError) {
+        postPublishInFlight = false;
+        alert('Post publish failed. ' + String(window.__LITHA_DB_LAST_ERROR || (postError && postError.message) || postError || 'Please retry.'));
+        return;
+    }
 
     var postTarget = $('.lithaQ-social-cen .lithaQ-box-parody').eq(0);
     postTarget.find('.loadingDiv-postsLoAD_preload-seek, .loadingDiv-postsLoadignAdd_preload-seek, .emptyState-posts').remove();
@@ -490,16 +626,26 @@ function postCurrent() {
     imgVal = '';
     iVal = '';
     resetPostImagePreview();
+    postPublishInFlight = false;
 }
 
 function retirivePostsFromFirebase() {
+    if (postFeedCache.length && postFeedCursor < postFeedCache.length) {
+        renderNextPostsFromCache(1);
+        return;
+    }
+    if (postFeedLoading) return;
+    postFeedLoading = true;
+
     var databaseRef = firebase.database().ref('/posts');
     var postRoot = $('.lithaQ-social-cen .lithaQ-box-parody').eq(0);
 
     postRoot.find('.loadingDiv-postsLoAD_preload-seek, .loadingDiv-postsLoadignAdd_preload-seek').remove();
-    postRoot.append('<div class="loadingDiv-postsLoAD_preload-seek"></div>');
+    if (!postFeedCache.length) {
+        postRoot.append('<div class="loadingDiv-postsLoAD_preload-seek"></div>');
+    }
 
-    databaseRef.once('value').then(function (snapshot) {
+    databaseRef.once('value').then(async function (snapshot) {
         var dataArray = [];
 
         snapshot.forEach(function (childSnapshot) {
@@ -512,32 +658,64 @@ function retirivePostsFromFirebase() {
         dataArray.sort(function (a, b) {
             return String((b.postdata_ || {}).createdAt || '').localeCompare(String((a.postdata_ || {}).createdAt || ''));
         });
-
-        var selectedObjects = dataArray.slice(0, Math.min(5, dataArray.length));
+        await Promise.all(dataArray.map(async function (selectedObject) {
+            var payload = selectedObject.postdata_ || {};
+            await hydratePostAuthorMeta(payload);
+            selectedObject.postdata_ = payload;
+        }));
 
         postRoot.find('.loadingDiv-postsLoAD_preload-seek, .loadingDiv-postsLoadignAdd_preload-seek, .emptyState-posts').remove();
-
-        if (!selectedObjects.length) {
-            postRoot.append('<div class="emptyState-posts" style="margin:1rem auto;opacity:.7;">No posts yet.</div>');
-        }
-
-        selectedObjects.forEach(function (selectedObject) {
-            var payload = selectedObject.postdata_ || {};
-            var html = payload.data || buildPostHtml(payload, payload.id || selectedObject.key);
-            postRoot.append(html);
-        });
-
-        retrievePostLikeCount();
-        hydrateRenderedPosts();
+        postFeedCache = dataArray;
+        postFeedCursor = 0;
+        postFeedRenderedMap = {};
+        renderNextPostsFromCache(1);
         renderLeaderboard(dataArray);
-        postRoot.append('<div class="loadingDiv-postsLoadignAdd_preload-seek" onclick="retirivePostsFromFirebase();">Load More</div>');
+        postFeedLoading = false;
     }).catch(function (error) {
         console.log('error', error);
         postRoot.find('.loadingDiv-postsLoAD_preload-seek').remove();
         postRoot.append('<div class="emptyState-posts" style="margin:1rem auto;opacity:.7;">Unable to load posts right now.</div>');
+        postFeedLoading = false;
     });
 
     scrollUnloadBitRta = 1;
+}
+
+function renderNextPostsFromCache(batchSize) {
+    batchSize = Number(batchSize || 1);
+    var postRoot = $('.lithaQ-social-cen .lithaQ-box-parody').eq(0);
+    postRoot.find('.loadingDiv-postsLoadignAdd_preload-seek, .emptyState-posts').remove();
+
+    if (!postFeedCache.length) {
+        postRoot.append('<div class="emptyState-posts" style="margin:1rem auto;opacity:.7;">No posts yet.</div>');
+        return;
+    }
+
+    var nextItems = postFeedCache.slice(postFeedCursor, postFeedCursor + batchSize);
+    nextItems.forEach(function (selectedObject) {
+        var payload = selectedObject.postdata_ || {};
+        var postId = payload.id || selectedObject.key;
+        if (postFeedRenderedMap[postId]) return;
+        var html = payload.data || buildPostHtml(payload, postId);
+        postRoot.append(html);
+        postFeedRenderedMap[postId] = true;
+    });
+
+    postFeedCursor += nextItems.length;
+    retrievePostLikeCount();
+    hydrateRenderedPosts();
+    if (postFeedCursor < postFeedCache.length) {
+        scheduleNextPostLoad();
+    }
+}
+
+function scheduleNextPostLoad() {
+    if (postFeedAutoTimer) {
+        clearTimeout(postFeedAutoTimer);
+    }
+    postFeedAutoTimer = setTimeout(function () {
+        renderNextPostsFromCache(1);
+    }, 180);
 }
 
 window.addEventListener('scroll', function () {

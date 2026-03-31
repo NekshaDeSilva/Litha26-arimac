@@ -92,6 +92,13 @@ const password = String(userData.passW || '');
 validateLogin(email, password);
     };
     function checkSignIn(){
+        var normalizedEmail = String((userData && userData.Email) || '').trim().toLowerCase();
+        if (!normalizedEmail) {
+            $('.ncloud-rolechange').html('<div class="errorHappened_div_ncloud-signin-Comp-inner"><img src="./assets//static/exclamation-diamond.svg" alt="error" draggable="false" loading="lazy" style="width: 5rem; margin-bottom: 1rem;"><span>Email is required before creating an account.</span><div onclick="window.location.href = \"\"">Retry</div></div>');
+            return;
+        }
+        userData.Email = normalizedEmail;
+
         function gen(p,v){
                 p = Math.floor(Math.random(Math.random()*99900)*70988770);
                 v = p*Math.floor(Math.random()*6);
