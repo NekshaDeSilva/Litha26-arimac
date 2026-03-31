@@ -511,7 +511,7 @@ $('.lithaContent-box').on('click', function(){
 });
 function docBlockS(){
     $('body').css({
-        'overflow-y':'hidden',
+        'overflow-y':'scroll',
 
     });
 }
