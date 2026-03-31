@@ -240,8 +240,7 @@ function renderLeaderboard(posts) {
 
     var list = Object.keys(scores)
         .map(function (k) { return scores[k]; })
-        .sort(function (a, b) { return b.likes - a.likes; })
-        .slice(0, 10);
+        .sort(function (a, b) { return b.likes - a.likes; });
 
     var host = $('.magSpinner_role-inner');
     if (!host.length) return;
@@ -264,6 +263,7 @@ function renderLeaderboard(posts) {
         </div>`;
     });
     html += '</div>';
+    html += '<div class="leaderboard-total" style="margin-top:.5rem;opacity:.7;font-size:.85rem;">Creators ranked: ' + list.length + '</div>';
 
     host.html(html);
 }
