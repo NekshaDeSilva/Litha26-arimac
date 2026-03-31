@@ -14,6 +14,7 @@ html{
 body{
     background-color: rgb(241, 241, 241);
     display: flex;
+       padding-bottom: 10rem; 
     flex-direction: column;
     scroll-behavior: smooth;
     justify-content: center;
