@@ -11,6 +11,10 @@ var refId;
 var enccodec;
 var scrollUnloadBitRta = 0;
 var postPublishInFlight = false;
+var postFeedCache = [];
+var postFeedCursor = 0;
+var postFeedLoading = false;
+var postFeedRenderedMap = {};
 
 function getSupabaseClient() {
     if (window.__lithaSupabaseClient) {
@@ -614,11 +618,20 @@ async function postCurrent() {
 }
 
 function retirivePostsFromFirebase() {
+    if (postFeedCache.length && postFeedCursor < postFeedCache.length) {
+        renderNextPostsFromCache(1);
+        return;
+    }
+    if (postFeedLoading) return;
+    postFeedLoading = true;
+
     var databaseRef = firebase.database().ref('/posts');
     var postRoot = $('.lithaQ-social-cen .lithaQ-box-parody').eq(0);
 
     postRoot.find('.loadingDiv-postsLoAD_preload-seek, .loadingDiv-postsLoadignAdd_preload-seek').remove();
-    postRoot.append('<div class="loadingDiv-postsLoAD_preload-seek"></div>');
+    if (!postFeedCache.length) {
+        postRoot.append('<div class="loadingDiv-postsLoAD_preload-seek"></div>');
+    }
 
     databaseRef.once('value').then(async function (snapshot) {
         var dataArray = [];
@@ -633,37 +646,56 @@ function retirivePostsFromFirebase() {
         dataArray.sort(function (a, b) {
             return String((b.postdata_ || {}).createdAt || '').localeCompare(String((a.postdata_ || {}).createdAt || ''));
         });
-
-        var selectedObjects = dataArray.slice(0, Math.min(5, dataArray.length));
-        await Promise.all(selectedObjects.map(async function (selectedObject) {
+        await Promise.all(dataArray.map(async function (selectedObject) {
             var payload = selectedObject.postdata_ || {};
             await hydratePostAuthorMeta(payload);
             selectedObject.postdata_ = payload;
         }));
 
         postRoot.find('.loadingDiv-postsLoAD_preload-seek, .loadingDiv-postsLoadignAdd_preload-seek, .emptyState-posts').remove();
-
-        if (!selectedObjects.length) {
-            postRoot.append('<div class="emptyState-posts" style="margin:1rem auto;opacity:.7;">No posts yet.</div>');
-        }
-
-        selectedObjects.forEach(function (selectedObject) {
-            var payload = selectedObject.postdata_ || {};
-            var html = payload.data || buildPostHtml(payload, payload.id || selectedObject.key);
-            postRoot.append(html);
-        });
-
-        retrievePostLikeCount();
-        hydrateRenderedPosts();
+        postFeedCache = dataArray;
+        postFeedCursor = 0;
+        postFeedRenderedMap = {};
+        renderNextPostsFromCache(1);
         renderLeaderboard(dataArray);
-        postRoot.append('<div class="loadingDiv-postsLoadignAdd_preload-seek" onclick="retirivePostsFromFirebase();">Load More</div>');
+        postFeedLoading = false;
     }).catch(function (error) {
         console.log('error', error);
         postRoot.find('.loadingDiv-postsLoAD_preload-seek').remove();
         postRoot.append('<div class="emptyState-posts" style="margin:1rem auto;opacity:.7;">Unable to load posts right now.</div>');
+        postFeedLoading = false;
     });
 
     scrollUnloadBitRta = 1;
+}
+
+function renderNextPostsFromCache(batchSize) {
+    batchSize = Number(batchSize || 1);
+    var postRoot = $('.lithaQ-social-cen .lithaQ-box-parody').eq(0);
+    postRoot.find('.loadingDiv-postsLoadignAdd_preload-seek, .emptyState-posts').remove();
+
+    if (!postFeedCache.length) {
+        postRoot.append('<div class="emptyState-posts" style="margin:1rem auto;opacity:.7;">No posts yet.</div>');
+        return;
+    }
+
+    var nextItems = postFeedCache.slice(postFeedCursor, postFeedCursor + batchSize);
+    nextItems.forEach(function (selectedObject) {
+        var payload = selectedObject.postdata_ || {};
+        var postId = payload.id || selectedObject.key;
+        if (postFeedRenderedMap[postId]) return;
+        var html = payload.data || buildPostHtml(payload, postId);
+        postRoot.append(html);
+        postFeedRenderedMap[postId] = true;
+    });
+
+    postFeedCursor += nextItems.length;
+    retrievePostLikeCount();
+    hydrateRenderedPosts();
+
+    if (postFeedCursor < postFeedCache.length) {
+        postRoot.append('<div class="loadingDiv-postsLoadignAdd_preload-seek" onclick="retirivePostsFromFirebase();">Load More</div>');
+    }
 }
 
 window.addEventListener('scroll', function () {
