@@ -45,6 +45,81 @@
       }
     };
   }
+  function normalizeUserRecord(row) {
+    const userDataFromPayload = (((row || {}).payload || {}).userData) || {};
+    const userData = {
+      userKeyId: row.user_key_id || userDataFromPayload.userKeyId || '',
+      Email: row.email || userDataFromPayload.Email || '',
+      passW: row.pass_hash || userDataFromPayload.passW || '',
+      Fname: row.first_name || userDataFromPayload.Fname || '',
+      Lname: row.last_name || userDataFromPayload.Lname || '',
+      bio: row.bio || userDataFromPayload.bio || 'Bio',
+      profileP: row.profile_p || userDataFromPayload.profileP || '',
+      accountStatus: Number(row.account_status !== undefined ? row.account_status : (userDataFromPayload.accountStatus || 0))
+    };
+    return { userData: userData };
+  }
+  function buildUserUpsertPayload(userKey, data) {
+    const userData = ((data || {}).userData) || {};
+    const email = String(userData.Email || '').trim().toLowerCase();
+    if (!email) throw new Error('Email is required to create/update ncloud_users row.');
+    return {
+      user_key_id: userKey,
+      email: email,
+      pass_hash: String(userData.passW || ''),
+      first_name: String(userData.Fname || ''),
+      last_name: String(userData.Lname || ''),
+      bio: String(userData.bio || 'Bio'),
+      profile_p: String(userData.profileP || ''),
+      account_status: Number(userData.accountStatus || 0),
+      payload: { userData: Object.assign({}, userData, { Email: email, userKeyId: userKey }) }
+    };
+  }
+  function normalizePostData(row) {
+    let parsed = {};
+    if (row && row.postdata_ && typeof row.postdata_ === 'object') {
+      parsed = Object.assign({}, row.postdata_);
+    } else if (row && typeof row.data === 'string' && row.data) {
+      try { parsed = JSON.parse(row.data) || {}; } catch (_) { parsed = { phrase: row.data }; }
+    }
+    if (!parsed || typeof parsed !== 'object') parsed = {};
+    if (!parsed.id && row && row.id) parsed.id = row.id;
+    if (parsed.likeCount === undefined || parsed.likeCount === null) parsed.likeCount = Number((row && row.like_count) || 0);
+    if (!parsed.authorKey) parsed.authorKey = (row && (row.author_key || row.user_key_id || row.user_id)) || '';
+    if (!parsed.authorName) {
+      parsed.authorName = (row && (row.author_name || row.username ||
+        (((row.first_name || '') + ' ' + (row.last_name || '')).trim()))) || '';
+    }
+    if (!parsed.authorProfile) parsed.authorProfile = (row && (row.author_profile || row.profile_p || row.avatar_url)) || '';
+    if (!parsed.image) parsed.image = (row && (row.image_url || row.image || row.photo_url)) || '';
+    if (!parsed.createdAt) parsed.createdAt = (row && row.created_at) || parsed.createdAt;
+    return parsed;
+  }
+  async function selectPostsCompat(client, postId) {
+    if (postId) {
+      const primary = await client.from('litha_posts').select('*').eq('id', postId).maybeSingle();
+      if (!primary.error) return primary.data ? [{ id: primary.data.id, postdata_: normalizePostData(primary.data) }] : [];
+      const fallbackA = await client.from('litha_posts').select('id, postdata_').eq('id', postId).maybeSingle();
+      if (!fallbackA.error) return fallbackA.data ? [{ id: fallbackA.data.id, postdata_: normalizePostData(fallbackA.data) }] : [];
+      const fallbackB = await client.from('litha_posts').select('id, data, like_count').eq('id', postId).maybeSingle();
+      if (fallbackB.error) throw primary.error;
+      return fallbackB.data ? [{ id: fallbackB.data.id, postdata_: normalizePostData(fallbackB.data) }] : [];
+    }
+    const primary = await client.from('litha_posts').select('*').order('created_at', { ascending: false });
+    if (!primary.error) return (primary.data || []).map(function (row) { return { id: row.id, postdata_: normalizePostData(row) }; });
+    const fallbackA = await client.from('litha_posts').select('id, postdata_').order('created_at', { ascending: false });
+    if (!fallbackA.error) return (fallbackA.data || []).map(function (row) { return { id: row.id, postdata_: normalizePostData(row) }; });
+    const fallbackB = await client.from('litha_posts').select('id, data, like_count').order('created_at', { ascending: false });
+    if (fallbackB.error) throw primary.error;
+    return (fallbackB.data || []).map(function (row) { return { id: row.id, postdata_: normalizePostData(row) }; });
+  }
+  async function upsertPostCompat(client, postId, postData) {
+    const primary = await client.from('litha_posts').upsert({ id: postId, postdata_: postData || {} }, { onConflict: 'id' });
+    if (!primary.error) return true;
+    const fallback = await client.from('litha_posts').upsert({ id: postId, data: JSON.stringify(postData || {}), like_count: Number(((postData || {}).likeCount) || 0) }, { onConflict: 'id' });
+    if (fallback.error) throw primary.error;
+    return true;
+  }
   function normalizePath(path) {
     if (!path || path === '/') return '/';
     return path.startsWith('/') ? path : '/' + path;
@@ -103,29 +178,27 @@
         const pairs = await tryRemoteQuery(async function (client) {
           const { data, error } = await client.rpc('ncloud_get_user_by_email', { login_email: self._equalTo });
           if (error) throw error;
-          return mergePairs((data || []).map(function (row) { return { key: row.user_key_id, value: row.payload }; }), localUserPairsByEmail(self._equalTo));
+          return mergePairs((data || []).map(function (row) { return { key: row.user_key_id, value: normalizeUserRecord(row) }; }), localUserPairsByEmail(self._equalTo));
         }, function () { return localUserPairsByEmail(self._equalTo); });
         snapshot = makeSnapshotFromPairs(pairs);
       } else if (self.path === '/' && self._orderBy && self._orderBy.type === 'key') {
         const pairs = await tryRemoteQuery(async function (client) {
           const { data, error } = await client.rpc('ncloud_get_user_by_key', { lookup_key: self._equalTo });
           if (error) throw error;
-          return mergePairs((data || []).map(function (row) { return { key: row.user_key_id, value: row.payload }; }), localUserPairsByKey(self._equalTo));
+          return mergePairs((data || []).map(function (row) { return { key: row.user_key_id, value: normalizeUserRecord(row) }; }), localUserPairsByKey(self._equalTo));
         }, function () { return localUserPairsByKey(self._equalTo); });
         snapshot = makeSnapshotFromPairs(pairs);
       } else if (self.path === '/posts') {
         const pairs = await tryRemoteQuery(async function (client) {
-          const { data, error } = await client.from('litha_posts').select('id, postdata_').order('created_at', { ascending: false });
-          if (error) throw error;
+          const data = await selectPostsCompat(client, null);
           return mergePairs((data || []).map(function (row) { return { key: row.id, value: { postdata_: row.postdata_ } }; }), localPostPairs());
         }, function () { return localPostPairs(); });
         snapshot = makeSnapshotFromPairs(pairs);
       } else if (/^\/posts\/[^/]+$/.test(self.path)) {
         const postId = self.path.split('/')[2];
         const pairs = await tryRemoteQuery(async function (client) {
-          const { data, error } = await client.from('litha_posts').select('id, postdata_').eq('id', postId).maybeSingle();
-          if (error) throw error;
-          return mergePairs(data ? [{ key: data.id, value: { postdata_: data.postdata_ } }] : [], localPostPair(postId));
+          const data = await selectPostsCompat(client, postId);
+          return mergePairs((data || []).map(function (row) { return { key: row.id, value: { postdata_: row.postdata_ } }; }), localPostPair(postId));
         }, function () { return localPostPair(postId); });
         snapshot = makeSnapshotFromPairs(pairs);
       } else {
@@ -143,10 +216,7 @@
       posts[postId] = data.postdata_ || {};
       setLocalPosts(posts);
       await tryRemoteQuery(async function (client) {
-        const payload = { id: postId, postdata_: data.postdata_ || {} };
-        const { error } = await client.from('litha_posts').upsert(payload, { onConflict: 'id' });
-        if (error) throw error;
-        return true;
+        return await upsertPostCompat(client, postId, data.postdata_ || {});
       }, function () { return true; });
       return;
     }
@@ -156,7 +226,7 @@
       users[userKey] = data;
       setLocalUsers(users);
       await tryRemoteQuery(async function (client) {
-        const payload = { user_key_id: userKey, payload: data };
+        const payload = buildUserUpsertPayload(userKey, data);
         const { error } = await client.from('ncloud_users').upsert(payload, { onConflict: 'user_key_id' });
         if (error) throw error;
         return true;
