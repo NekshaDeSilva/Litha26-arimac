@@ -96,9 +96,20 @@
       parsed.authorName = (row && (row.author_name || row.username ||
         (((row.first_name || '') + ' ' + (row.last_name || '')).trim()))) || '';
     }
+    var profileRow = row && (row.profiles || row.profile || null);
+    if (Array.isArray(profileRow)) profileRow = profileRow[0] || null;
+    if (!parsed.authorName && profileRow) {
+      parsed.authorName = profileRow.display_name || (((profileRow.first_name || '') + ' ' + (profileRow.last_name || '')).trim()) || '';
+    }
     if (!parsed.authorProfile) parsed.authorProfile = (row && (row.author_profile || row.profile_p || row.avatar_url)) || '';
+    if (!parsed.authorProfile && profileRow) parsed.authorProfile = profileRow.avatar_url || '';
     if (!parsed.image) parsed.image = (row && (row.image_url || row.image || row.photo_url)) || '';
+    if (!parsed.image) parsed.image = (row && row.image_data_url) || '';
+    if (!parsed.phrase) parsed.phrase = (row && (row.content || row.text)) || parsed.phrase || '';
     if (!parsed.createdAt) parsed.createdAt = (row && row.created_at) || parsed.createdAt;
+    if ((parsed.authorVerified === undefined || parsed.authorVerified === null) && profileRow) {
+      parsed.authorVerified = profileRow.is_verified ? 1 : 0;
+    }
     return parsed;
   }
 
@@ -115,8 +126,15 @@
       }
 
       const fallbackB = await client.from('litha_posts').select('id, data, like_count').eq('id', postId).maybeSingle();
-      if (fallbackB.error) throw primary.error;
-      return fallbackB.data ? [{ id: fallbackB.data.id, postdata_: normalizePostData(fallbackB.data) }] : [];
+      if (!fallbackB.error) return fallbackB.data ? [{ id: fallbackB.data.id, postdata_: normalizePostData(fallbackB.data) }] : [];
+
+      const alt = await client
+        .from('posts')
+        .select('id, content, image_data_url, like_count, created_at, user_id, profiles(first_name,last_name,display_name,avatar_url,is_verified)')
+        .eq('id', postId)
+        .maybeSingle();
+      if (alt.error) throw primary.error;
+      return alt.data ? [{ id: alt.data.id, postdata_: normalizePostData(alt.data) }] : [];
     }
 
     const primary = await client.from('litha_posts').select('*').order('created_at', { ascending: false });
@@ -134,8 +152,18 @@
     }
 
     const fallbackB = await client.from('litha_posts').select('id, data, like_count').order('created_at', { ascending: false });
-    if (fallbackB.error) throw primary.error;
-    return (fallbackB.data || []).map(function (row) {
+    if (!fallbackB.error) {
+      return (fallbackB.data || []).map(function (row) {
+        return { id: row.id, postdata_: normalizePostData(row) };
+      });
+    }
+
+    const alt = await client
+      .from('posts')
+      .select('id, content, image_data_url, like_count, created_at, user_id, profiles(first_name,last_name,display_name,avatar_url,is_verified)')
+      .order('created_at', { ascending: false });
+    if (alt.error) throw primary.error;
+    return (alt.data || []).map(function (row) {
       return { id: row.id, postdata_: normalizePostData(row) };
     });
   }
