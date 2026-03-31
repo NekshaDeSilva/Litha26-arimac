@@ -487,6 +487,40 @@ function userProfileActive() {
     });
 }
 
+async function fetchUserRecordByKey(userKey) {
+    if (!userKey) return null;
+    try {
+        var snapshot = await firebase.database().ref('/').orderByKey().equalTo(userKey).once('value');
+        var resolved = null;
+        if (snapshot && snapshot.exists()) {
+            snapshot.forEach(function (childSnapshot) {
+                var row = childSnapshot.val() || {};
+                resolved = row.userData || null;
+            });
+        }
+        return resolved;
+    } catch (err) {
+        return null;
+    }
+}
+
+async function hydratePostAuthorMeta(payload) {
+    payload = payload || {};
+    if ((payload.authorName && payload.authorProfile) || !payload.authorKey) {
+        return payload;
+    }
+
+    var userRow = await fetchUserRecordByKey(payload.authorKey);
+    if (!userRow) return payload;
+
+    payload.authorFirstName = payload.authorFirstName || userRow.Fname || '';
+    payload.authorLastName = payload.authorLastName || userRow.Lname || '';
+    payload.authorName = payload.authorName || ((userRow.Fname || '') + ' ' + (userRow.Lname || '')).trim() || 'User';
+    payload.authorProfile = payload.authorProfile || userRow.profileP || 'assests/neketh-vectors/person-fill.svg';
+    payload.authorVerified = Number(payload.authorVerified || userRow.accountStatus || 0);
+    return payload;
+}
+
 function scrollIntoViewNha(des) {
     document.querySelector(des).scrollIntoView();
 }
@@ -511,6 +545,13 @@ async function postCurrent() {
     postPublishInFlight = true;
 
     pid = Math.floor(Math.random() * 889 * 774) + 'PID';
+
+    if ((!userData || !userData.userData) && enccodec) {
+        var fetchedUserData = await fetchUserRecordByKey(enccodec);
+        if (fetchedUserData) {
+            userData = { userData: fetchedUserData };
+        }
+    }
 
     function checkFcurrentTime_datePost() {
         // Return ISO string for accurate time difference calculation
@@ -579,7 +620,7 @@ function retirivePostsFromFirebase() {
     postRoot.find('.loadingDiv-postsLoAD_preload-seek, .loadingDiv-postsLoadignAdd_preload-seek').remove();
     postRoot.append('<div class="loadingDiv-postsLoAD_preload-seek"></div>');
 
-    databaseRef.once('value').then(function (snapshot) {
+    databaseRef.once('value').then(async function (snapshot) {
         var dataArray = [];
 
         snapshot.forEach(function (childSnapshot) {
@@ -594,6 +635,11 @@ function retirivePostsFromFirebase() {
         });
 
         var selectedObjects = dataArray.slice(0, Math.min(5, dataArray.length));
+        await Promise.all(selectedObjects.map(async function (selectedObject) {
+            var payload = selectedObject.postdata_ || {};
+            await hydratePostAuthorMeta(payload);
+            selectedObject.postdata_ = payload;
+        }));
 
         postRoot.find('.loadingDiv-postsLoAD_preload-seek, .loadingDiv-postsLoadignAdd_preload-seek, .emptyState-posts').remove();
 
