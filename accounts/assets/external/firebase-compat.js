@@ -80,7 +80,17 @@
     if (row && row.postdata_ && typeof row.postdata_ === 'object') {
       parsed = Object.assign({}, row.postdata_);
     } else if (row && typeof row.data === 'string' && row.data) {
-      try { parsed = JSON.parse(row.data) || {}; } catch (_) { parsed = /<\w+[^>]*>/.test(row.data) ? { data: row.data } : { phrase: row.data }; }
+      try {
+        var parsedRaw = JSON.parse(row.data);
+        if (typeof parsedRaw === 'string') {
+          var decodedRaw = parsedRaw.replace(/\\n/g, '\n').replace(/\\"/g, '"');
+          parsed = /<\w+[^>]*>/.test(decodedRaw) ? { data: decodedRaw } : { phrase: decodedRaw };
+        } else {
+          parsed = parsedRaw || {};
+        }
+      } catch (_) {
+        parsed = /<\w+[^>]*>/.test(row.data) ? { data: row.data } : { phrase: row.data };
+      }
     }
     if (!parsed || typeof parsed !== 'object') parsed = {};
     if (!parsed.id && row && row.id) parsed.id = row.id;
@@ -99,6 +109,9 @@
     if (!parsed.authorProfile && profileRow) parsed.authorProfile = profileRow.avatar_url || '';
     if (!parsed.image) parsed.image = (row && (row.image_url || row.image || row.photo_url)) || '';
     if (!parsed.image) parsed.image = (row && row.image_data_url) || '';
+    if (typeof parsed.data === 'string' && /\\n|\\"/.test(parsed.data)) {
+      parsed.data = parsed.data.replace(/\\n/g, '\n').replace(/\\"/g, '"');
+    }
     if (!parsed.data && row && typeof row.data === 'string' && /<\w+[^>]*>/.test(row.data)) parsed.data = row.data;
     if (!parsed.phrase) parsed.phrase = (row && (row.content || row.text)) || parsed.phrase || '';
     if (!parsed.createdAt) parsed.createdAt = (row && row.created_at) || parsed.createdAt;
