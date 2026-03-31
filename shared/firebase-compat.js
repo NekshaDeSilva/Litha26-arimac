@@ -94,6 +94,18 @@
         .replace(/&amp;/gi, '&');
       return v;
     }
+    function cleanHtmlFragment(value) {
+      if (typeof value !== 'string') return '';
+      var html = value.trim();
+      var firstTagIndex = html.indexOf('<');
+      if (firstTagIndex > 0) {
+        var prefix = html.slice(0, firstTagIndex).trim();
+        if (prefix.length > 60) {
+          html = html.slice(firstTagIndex);
+        }
+      }
+      return html;
+    }
 
     let parsed = {};
     if (row && row.postdata_ && typeof row.postdata_ === 'object') {
@@ -104,7 +116,7 @@
         if (typeof parsedRaw === 'string') {
           var decodedRaw = decodeLegacyMarkup(parsedRaw);
           parsed = /<\w+[^>]*>/.test(decodedRaw)
-            ? { data: decodedRaw }
+            ? { data: cleanHtmlFragment(decodedRaw) }
             : ((decodedRaw.length > 300 || /\\n/.test(parsedRaw)) ? {} : { phrase: decodedRaw });
         } else {
           parsed = parsedRaw || {};
@@ -112,7 +124,7 @@
       } catch (_) {
         var decodedFallback = decodeLegacyMarkup(row.data);
         parsed = /<\w+[^>]*>/.test(decodedFallback)
-          ? { data: decodedFallback }
+          ? { data: cleanHtmlFragment(decodedFallback) }
           : ((decodedFallback.length > 300 || /\\n/.test(row.data)) ? {} : { phrase: decodedFallback });
       }
     }
@@ -136,13 +148,14 @@
     if (!parsed.image) parsed.image = (row && row.image_data_url) || '';
     if (typeof parsed.data === 'string') {
       parsed.data = decodeLegacyMarkup(parsed.data);
+      parsed.data = cleanHtmlFragment(parsed.data);
       if (!/<\w+[^>]*>/.test(parsed.data) && parsed.data.length > 300) {
         delete parsed.data;
       }
     }
     if (!parsed.data && row && typeof row.data === 'string') {
       var decodedRowData = decodeLegacyMarkup(row.data);
-      if (/<\w+[^>]*>/.test(decodedRowData)) parsed.data = decodedRowData;
+      if (/<\w+[^>]*>/.test(decodedRowData)) parsed.data = cleanHtmlFragment(decodedRowData);
     }
     if (!parsed.phrase) parsed.phrase = (row && (row.content || row.text)) || parsed.phrase || '';
     if (!parsed.createdAt) parsed.createdAt = (row && row.created_at) || parsed.createdAt;
