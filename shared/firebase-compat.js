@@ -76,6 +76,65 @@
     };
   }
 
+  function normalizePostData(row) {
+    if (row && row.postdata_ && typeof row.postdata_ === 'object') {
+      return row.postdata_;
+    }
+
+    let parsed = {};
+    if (row && typeof row.data === 'string' && row.data) {
+      try { parsed = JSON.parse(row.data); } catch (_) { parsed = {}; }
+    }
+
+    if (!parsed || typeof parsed !== 'object') parsed = {};
+    if (!parsed.id && row && row.id) parsed.id = row.id;
+    if (parsed.likeCount === undefined || parsed.likeCount === null) {
+      parsed.likeCount = Number((row && row.like_count) || 0);
+    }
+
+    return parsed;
+  }
+
+  async function selectPostsCompat(client, postId) {
+    if (postId) {
+      const primary = await client.from('litha_posts').select('id, postdata_').eq('id', postId).maybeSingle();
+      if (!primary.error) {
+        return primary.data ? [{ id: primary.data.id, postdata_: normalizePostData(primary.data) }] : [];
+      }
+
+      const fallback = await client.from('litha_posts').select('id, data, like_count').eq('id', postId).maybeSingle();
+      if (fallback.error) throw primary.error;
+      return fallback.data ? [{ id: fallback.data.id, postdata_: normalizePostData(fallback.data) }] : [];
+    }
+
+    const primary = await client.from('litha_posts').select('id, postdata_').order('created_at', { ascending: false });
+    if (!primary.error) {
+      return (primary.data || []).map(function (row) {
+        return { id: row.id, postdata_: normalizePostData(row) };
+      });
+    }
+
+    const fallback = await client.from('litha_posts').select('id, data, like_count').order('created_at', { ascending: false });
+    if (fallback.error) throw primary.error;
+    return (fallback.data || []).map(function (row) {
+      return { id: row.id, postdata_: normalizePostData(row) };
+    });
+  }
+
+  async function upsertPostCompat(client, postId, postData) {
+    const primaryPayload = { id: postId, postdata_: postData || {} };
+    const primary = await client.from('litha_posts').upsert(primaryPayload, { onConflict: 'id' });
+    if (!primary.error) return;
+
+    const fallbackPayload = {
+      id: postId,
+      data: JSON.stringify(postData || {}),
+      like_count: Number(((postData || {}).likeCount) || 0)
+    };
+    const fallback = await client.from('litha_posts').upsert(fallbackPayload, { onConflict: 'id' });
+    if (fallback.error) throw primary.error;
+  }
+
   function normalizePath(path) {
     if (!path || path === '/') return '/';
     return path.startsWith('/') ? path : '/' + path;
@@ -121,21 +180,12 @@
           return { key: row.user_key_id, value: normalizeUserRecord(row) };
         });
       } else if (self.path === '/posts') {
-        const { data, error } = await client
-          .from('litha_posts')
-          .select('id, postdata_')
-          .order('created_at', { ascending: false });
-        if (error) throw error;
-        pairs = (data || []).map(function (row) { return { key: row.id, value: { postdata_: row.postdata_ } }; });
+        const rows = await selectPostsCompat(client, null);
+        pairs = (rows || []).map(function (row) { return { key: row.id, value: { postdata_: row.postdata_ } }; });
       } else if (/^\/posts\/[^/]+$/.test(self.path)) {
         const postId = self.path.split('/')[2];
-        const { data, error } = await client
-          .from('litha_posts')
-          .select('id, postdata_')
-          .eq('id', postId)
-          .maybeSingle();
-        if (error) throw error;
-        pairs = data ? [{ key: data.id, value: { postdata_: data.postdata_ } }] : [];
+        const rows = await selectPostsCompat(client, postId);
+        pairs = (rows || []).map(function (row) { return { key: row.id, value: { postdata_: row.postdata_ } }; });
       }
 
       const snapshot = makeSnapshotFromPairs(pairs);
@@ -155,10 +205,8 @@
 
     if (/^\/posts\/[^/]+$/.test(this.path)) {
       const postId = this.path.split('/')[2];
-      const payload = { id: postId, postdata_: data.postdata_ || {} };
-      const { error } = await client.from('litha_posts').upsert(payload, { onConflict: 'id' });
-      setLastError(error);
-      if (error) throw error;
+      await upsertPostCompat(client, postId, data.postdata_ || {});
+      setLastError('');
       return;
     }
 
@@ -186,13 +234,8 @@
         const postId = self.path.split('/')[2];
         const client = getClient();
 
-        const { data: currentRow, error: currentError } = await client
-          .from('litha_posts')
-          .select('postdata_')
-          .eq('id', postId)
-          .maybeSingle();
-
-        if (currentError) throw currentError;
+        const existingRows = await selectPostsCompat(client, postId);
+        const currentRow = existingRows && existingRows[0];
         if (!currentRow || !currentRow.postdata_) {
           throw new Error('Post not found for like transaction: ' + postId);
         }
@@ -209,11 +252,7 @@
 
         if (rpcError) {
           const nextPostData = Object.assign({}, currentRow.postdata_, { likeCount: Number(desired || 0) });
-          const { error: updateError } = await client
-            .from('litha_posts')
-            .update({ postdata_: nextPostData })
-            .eq('id', postId);
-          if (updateError) throw updateError;
+          await upsertPostCompat(client, postId, nextPostData);
           setLastError('');
           completion && completion(null, true, { val: function () { return Number(desired || 0); } });
           return;

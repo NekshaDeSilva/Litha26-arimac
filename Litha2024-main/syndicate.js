@@ -516,9 +516,15 @@ async function postCurrent() {
         try {
             imageUrl = await uploadPostImageToSupabase(pid, imgFileVal);
         } catch (uploadError) {
-            postPublishInFlight = false;
-            alert('Image upload failed. Please try again. ' + String((uploadError && uploadError.message) || uploadError || ''));
-            return;
+            var uploadMessage = String((uploadError && uploadError.message) || uploadError || '');
+            if (/bucket not found/i.test(uploadMessage)) {
+                imageUrl = imgVal || '';
+                alert('Supabase bucket not found. Publishing with inline image data for now.');
+            } else {
+                postPublishInFlight = false;
+                alert('Image upload failed. Please try again. ' + uploadMessage);
+                return;
+            }
         }
     }
 

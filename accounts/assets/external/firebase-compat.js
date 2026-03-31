@@ -75,6 +75,38 @@
       payload: { userData: Object.assign({}, userData, { Email: email, userKeyId: userKey }) }
     };
   }
+  function normalizePostData(row) {
+    if (row && row.postdata_ && typeof row.postdata_ === 'object') return row.postdata_;
+    let parsed = {};
+    if (row && typeof row.data === 'string' && row.data) {
+      try { parsed = JSON.parse(row.data); } catch (_) { parsed = {}; }
+    }
+    if (!parsed || typeof parsed !== 'object') parsed = {};
+    if (!parsed.id && row && row.id) parsed.id = row.id;
+    if (parsed.likeCount === undefined || parsed.likeCount === null) parsed.likeCount = Number((row && row.like_count) || 0);
+    return parsed;
+  }
+  async function selectPostsCompat(client, postId) {
+    if (postId) {
+      const primary = await client.from('litha_posts').select('id, postdata_').eq('id', postId).maybeSingle();
+      if (!primary.error) return primary.data ? [{ id: primary.data.id, postdata_: normalizePostData(primary.data) }] : [];
+      const fallback = await client.from('litha_posts').select('id, data, like_count').eq('id', postId).maybeSingle();
+      if (fallback.error) throw primary.error;
+      return fallback.data ? [{ id: fallback.data.id, postdata_: normalizePostData(fallback.data) }] : [];
+    }
+    const primary = await client.from('litha_posts').select('id, postdata_').order('created_at', { ascending: false });
+    if (!primary.error) return (primary.data || []).map(function (row) { return { id: row.id, postdata_: normalizePostData(row) }; });
+    const fallback = await client.from('litha_posts').select('id, data, like_count').order('created_at', { ascending: false });
+    if (fallback.error) throw primary.error;
+    return (fallback.data || []).map(function (row) { return { id: row.id, postdata_: normalizePostData(row) }; });
+  }
+  async function upsertPostCompat(client, postId, postData) {
+    const primary = await client.from('litha_posts').upsert({ id: postId, postdata_: postData || {} }, { onConflict: 'id' });
+    if (!primary.error) return true;
+    const fallback = await client.from('litha_posts').upsert({ id: postId, data: JSON.stringify(postData || {}), like_count: Number(((postData || {}).likeCount) || 0) }, { onConflict: 'id' });
+    if (fallback.error) throw primary.error;
+    return true;
+  }
   function normalizePath(path) {
     if (!path || path === '/') return '/';
     return path.startsWith('/') ? path : '/' + path;
@@ -145,17 +177,15 @@
         snapshot = makeSnapshotFromPairs(pairs);
       } else if (self.path === '/posts') {
         const pairs = await tryRemoteQuery(async function (client) {
-          const { data, error } = await client.from('litha_posts').select('id, postdata_').order('created_at', { ascending: false });
-          if (error) throw error;
+          const data = await selectPostsCompat(client, null);
           return mergePairs((data || []).map(function (row) { return { key: row.id, value: { postdata_: row.postdata_ } }; }), localPostPairs());
         }, function () { return localPostPairs(); });
         snapshot = makeSnapshotFromPairs(pairs);
       } else if (/^\/posts\/[^/]+$/.test(self.path)) {
         const postId = self.path.split('/')[2];
         const pairs = await tryRemoteQuery(async function (client) {
-          const { data, error } = await client.from('litha_posts').select('id, postdata_').eq('id', postId).maybeSingle();
-          if (error) throw error;
-          return mergePairs(data ? [{ key: data.id, value: { postdata_: data.postdata_ } }] : [], localPostPair(postId));
+          const data = await selectPostsCompat(client, postId);
+          return mergePairs((data || []).map(function (row) { return { key: row.id, value: { postdata_: row.postdata_ } }; }), localPostPair(postId));
         }, function () { return localPostPair(postId); });
         snapshot = makeSnapshotFromPairs(pairs);
       } else {
@@ -173,10 +203,7 @@
       posts[postId] = data.postdata_ || {};
       setLocalPosts(posts);
       await tryRemoteQuery(async function (client) {
-        const payload = { id: postId, postdata_: data.postdata_ || {} };
-        const { error } = await client.from('litha_posts').upsert(payload, { onConflict: 'id' });
-        if (error) throw error;
-        return true;
+        return await upsertPostCompat(client, postId, data.postdata_ || {});
       }, function () { return true; });
       return;
     }
