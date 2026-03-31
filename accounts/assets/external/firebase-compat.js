@@ -76,6 +76,24 @@
     };
   }
   function normalizePostData(row) {
+    function decodeLegacyMarkup(value) {
+      if (typeof value !== 'string') return '';
+      var v = value
+        .replace(/\\n/g, '\n')
+        .replace(/\\"/g, '"')
+        .replace(/\\u003c/gi, '<')
+        .replace(/\\u003e/gi, '>')
+        .replace(/\\u0026/gi, '&')
+        .replace(/\\u0027/gi, "'")
+        .replace(/\\u0022/gi, '"')
+        .replace(/&lt;/gi, '<')
+        .replace(/&gt;/gi, '>')
+        .replace(/&quot;/gi, '"')
+        .replace(/&#39;/gi, "'")
+        .replace(/&amp;/gi, '&');
+      return v;
+    }
+
     let parsed = {};
     if (row && row.postdata_ && typeof row.postdata_ === 'object') {
       parsed = Object.assign({}, row.postdata_);
@@ -83,13 +101,18 @@
       try {
         var parsedRaw = JSON.parse(row.data);
         if (typeof parsedRaw === 'string') {
-          var decodedRaw = parsedRaw.replace(/\\n/g, '\n').replace(/\\"/g, '"');
-          parsed = /<\w+[^>]*>/.test(decodedRaw) ? { data: decodedRaw } : { phrase: decodedRaw };
+          var decodedRaw = decodeLegacyMarkup(parsedRaw);
+          parsed = /<\w+[^>]*>/.test(decodedRaw)
+            ? { data: decodedRaw }
+            : ((decodedRaw.length > 300 || /\\n/.test(parsedRaw)) ? {} : { phrase: decodedRaw });
         } else {
           parsed = parsedRaw || {};
         }
       } catch (_) {
-        parsed = /<\w+[^>]*>/.test(row.data) ? { data: row.data } : { phrase: row.data };
+        var decodedFallback = decodeLegacyMarkup(row.data);
+        parsed = /<\w+[^>]*>/.test(decodedFallback)
+          ? { data: decodedFallback }
+          : ((decodedFallback.length > 300 || /\\n/.test(row.data)) ? {} : { phrase: decodedFallback });
       }
     }
     if (!parsed || typeof parsed !== 'object') parsed = {};
@@ -109,10 +132,16 @@
     if (!parsed.authorProfile && profileRow) parsed.authorProfile = profileRow.avatar_url || '';
     if (!parsed.image) parsed.image = (row && (row.image_url || row.image || row.photo_url)) || '';
     if (!parsed.image) parsed.image = (row && row.image_data_url) || '';
-    if (typeof parsed.data === 'string' && /\\n|\\"/.test(parsed.data)) {
-      parsed.data = parsed.data.replace(/\\n/g, '\n').replace(/\\"/g, '"');
+    if (typeof parsed.data === 'string') {
+      parsed.data = decodeLegacyMarkup(parsed.data);
+      if (!/<\w+[^>]*>/.test(parsed.data) && parsed.data.length > 300) {
+        delete parsed.data;
+      }
     }
-    if (!parsed.data && row && typeof row.data === 'string' && /<\w+[^>]*>/.test(row.data)) parsed.data = row.data;
+    if (!parsed.data && row && typeof row.data === 'string') {
+      var decodedRowData = decodeLegacyMarkup(row.data);
+      if (/<\w+[^>]*>/.test(decodedRowData)) parsed.data = decodedRowData;
+    }
     if (!parsed.phrase) parsed.phrase = (row && (row.content || row.text)) || parsed.phrase || '';
     if (!parsed.createdAt) parsed.createdAt = (row && row.created_at) || parsed.createdAt;
     if ((parsed.authorVerified === undefined || parsed.authorVerified === null) && profileRow) {
