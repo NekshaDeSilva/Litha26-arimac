@@ -10,16 +10,18 @@
 html{
     font-family: 'Ubuntu', 'Gemunu Libre', sans-serif;
     scroll-behavior: smooth;
+    
 }
 body{
     background-color: rgb(241, 241, 241);
     display: flex;
     flex-direction: column;
+
     scroll-behavior: smooth;
     justify-content: center;
     align-items: center;
     overflow-x: hidden;
-
+ 
 }
 @keyframes gradient {
 	0% {
@@ -1894,7 +1896,7 @@ body[data-lang='si'], .preLoaderBox-h3, .nowKeeping-timer-element, .tagh3-header
 .leaderboard-avatar{width:2.4rem;height:2.4rem;border-radius:50%;background:#fff center/cover no-repeat;flex:none;}
 .leaderboard-name{font-weight:700;font-size:1rem;display:flex;align-items:center;gap:.35rem;}
 .leaderboard-score{font-weight:700;color:#111;white-space:nowrap;}
-.lithaProjectStory-strip{background:#fff;color:#111;padding:1rem 0 0 0;}
+.lithaProjectStory-strip{    padding-bottom: 10rem; background:#fff;color:#111;padding:1rem 0 0 0;}
 .lithaProjectStory-inner{width:92%;margin:0 auto;display:flex;gap:1rem;align-items:flex-start;padding:1rem 0;border-top:1px solid rgba(0,0,0,.08);}
 .lithaProjectStory-icon{width:2.25rem;height:2.25rem;display:flex;align-items:center;justify-content:center;color:#fff;border-radius:50%;flex:none;}
 .lithaProjectStory-copy p{margin:0;font-size:.95rem;line-height:1.6;font-family:'Ubuntu',sans-serif;}
