@@ -359,7 +359,7 @@ function lithaPop_cont_signIn() {
         } catch (e) {}
 
         setTimeout(function () {
-            window.location.href = ((window.LITHA_ACCOUNTS_URL) || '../accounts/index.html') + '?refK=' + encodeURIComponent(maxrand) + '&redrct=signInwindow';
+            window.location.href = ((window.LITHA_ACCOUNTS_URL) || './accounts/index.html') + '?refK=' + encodeURIComponent(maxrand) + '&redrct=signInwindow';
         }, 1000);
     });
 }
@@ -743,7 +743,7 @@ function adSyndicateTagFill(tme) {
     $('body').append(`
         <div class="adSyndicateDiv_mediaOgAd">
             <div class="AdygfSyndicate_OnPageloadDiv-video" onclick="advertiserIdRediect(adsyn = 919)">
-                <video poster="./assests/adContent/cs/logo.png" src="../adsyndicationncloud.pages.dev/GBFimRnfifAMyzEDABX3Gbw7Vdh3bmdjAAAF.mp4" class="AdygfSyndicate_OnPageloadDiv-video65" autoplay="true"></video>
+                <video poster="./assests/adContent/cs/logo.png" src="./external/adsyndicationncloud.pages.dev/GBFimRnfifAMyzEDABX3Gbw7Vdh3bmdjAAAF.mp4" class="AdygfSyndicate_OnPageloadDiv-video65" autoplay="true"></video>
                 <div class="advertiserImg_snapShot-firebaseSDK">
                     <div class="advertiserImg_snapShot-firebaseSD-innerdiv">
                         <img src="./assests/adContent/cs/logo.png" alt="advertiserLogo">
