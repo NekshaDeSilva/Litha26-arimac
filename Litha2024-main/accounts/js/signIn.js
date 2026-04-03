@@ -1,5 +1,19 @@
 //Copyrights (c) 2026 Litha 2026. All rights reserved.
 var refid;
+
+function resolveMainEntryUrl() {
+    var marker = '/Litha2024-main/';
+    var pathname = String(window.location.pathname || '');
+    var markerIndex = pathname.indexOf(marker);
+
+    if (markerIndex !== -1) {
+        var root = pathname.slice(0, markerIndex + marker.length);
+        return window.location.origin + root + 'index.html';
+    }
+
+    return new URL('../index.html', window.location.href).toString();
+}
+
 function signin(){
     untillexpose_finds();
     
@@ -24,7 +38,7 @@ function validateLogin(email, password) {
 
             setTimeout(function(){
                 try { localStorage.setItem('apiAccess', maxrandval || ''); localStorage.setItem('userStatus', e.toString()); localStorage.setItem('lithaUserKey', userData.userKeyId || ''); document.cookie = 'litha_apiAccess=' + encodeURIComponent(maxrandval || '') + '; path=/; max-age=' + (60*60*24*30); document.cookie = 'litha_userStatus=' + encodeURIComponent(e.toString()) + '; path=/; max-age=' + (60*60*24*30); document.cookie = 'litha_userKey=' + encodeURIComponent(userData.userKeyId || '') + '; path=/; max-age=' + (60*60*24*30); } catch(err) {}
-                var targetMain = (window.LITHA_MAIN_URL)||'../Litha2024-main/index.html';
+                var targetMain = (window.LITHA_MAIN_URL) || resolveMainEntryUrl();
                 window.location.href = targetMain + '?referenc=' + encodeURIComponent(e.toString()) + '&apiAccess=' + encodeURIComponent(maxrandval || '') + '&userKey=' + encodeURIComponent(userData.userKeyId || '') + '&rdrctid=sct5'
 
             },1000)
@@ -120,7 +134,7 @@ validateLogin(email, password);
                     checkFLogin();
                     return;
                 }
-                $('.ncloud-rolechange').html('<div class="errorHappened_div_ncloud-signin-Comp-inner"><img src="./assets//static/exclamation-diamond.svg" alt="error" draggable="false" loading="lazy" style="width: 5rem; margin-bottom: 1rem;"><span>This email is already used.<br>Try logging in or use another email.</span><div onclick="window.location.href = """>Retry</div></div>');
+                $('.ncloud-rolechange').html('<div class="errorHappened_div_ncloud-signin-Comp-inner"><img src="./assets//static/exclamation-diamond.svg" alt="error" draggable="false" loading="lazy" style="width: 5rem; margin-bottom: 1rem;"><span>This email is already used.<br>Try logging in or use another email.</span><div onclick="window.location.href = \"\"">Retry</div></div>');
                 return;
             }
             userData.userKeyId = gen()+`NQ`;
@@ -129,7 +143,7 @@ validateLogin(email, password);
                 checkFLogin();
             }).catch(function(err){
                 console.error('Account creation failed', err, window.__LITHA_DB_LAST_ERROR || '');
-                $('.ncloud-rolechange').html('<div class="errorHappened_div_ncloud-signin-Comp-inner"><img src="./assets//static/exclamation-diamond.svg" alt="error" draggable="false" loading="lazy" style="width: 5rem; margin-bottom: 1rem;"><span>An error occurred while creating the account.<br>' + String(window.__LITHA_DB_LAST_ERROR || err || 'Please retry.') + '</span><div onclick="window.location.href = """>Retry</div></div>');
+                $('.ncloud-rolechange').html('<div class="errorHappened_div_ncloud-signin-Comp-inner"><img src="./assets//static/exclamation-diamond.svg" alt="error" draggable="false" loading="lazy" style="width: 5rem; margin-bottom: 1rem;"><span>An error occurred while creating the account.<br>' + String(window.__LITHA_DB_LAST_ERROR || err || 'Please retry.') + '</span><div onclick="window.location.href = \"\"">Retry</div></div>');
             });
         }).catch(function(err){
             console.error('Email lookup failed', err, window.__LITHA_DB_LAST_ERROR || '');
@@ -138,7 +152,7 @@ validateLogin(email, password);
                 try { localStorage.setItem('lithaUserKey', userData.userKeyId || ''); } catch (err) {}
                 checkFLogin();
             }).catch(function(err2){
-                $('.ncloud-rolechange').html('<div class="errorHappened_div_ncloud-signin-Comp-inner"><img src="./assets//static/exclamation-diamond.svg" alt="error" draggable="false" loading="lazy" style="width: 5rem; margin-bottom: 1rem;"><span>An error occurred while creating the account.<br>' + String(window.__LITHA_DB_LAST_ERROR || err2 || 'Please retry.') + '</span><div onclick="window.location.href = """>Retry</div></div>');
+                $('.ncloud-rolechange').html('<div class="errorHappened_div_ncloud-signin-Comp-inner"><img src="./assets//static/exclamation-diamond.svg" alt="error" draggable="false" loading="lazy" style="width: 5rem; margin-bottom: 1rem;"><span>An error occurred while creating the account.<br>' + String(window.__LITHA_DB_LAST_ERROR || err2 || 'Please retry.') + '</span><div onclick="window.location.href = \"\"">Retry</div></div>');
             });
         });
     }

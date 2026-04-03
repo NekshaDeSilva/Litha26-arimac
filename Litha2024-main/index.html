@@ -433,7 +433,14 @@ function wrteFdbk(){
     window.open('https://wa.me/94760304894');
 }
 function openLegalMedia(){
-    window.open('legal/music-and-media.html', '_blank');
+    var marker = '/Litha2024-main/';
+    var pathname = String(window.location.pathname || '');
+    var markerIndex = pathname.indexOf(marker);
+    var mainUrl = markerIndex !== -1
+        ? (window.location.origin + pathname.slice(0, markerIndex + marker.length) + 'index.html')
+        : new URL('./index.html', window.location.href).toString();
+    var legalUrl = new URL('./legal/music-and-media.html', mainUrl).toString();
+    window.open(legalUrl, '_blank');
 }
 
 

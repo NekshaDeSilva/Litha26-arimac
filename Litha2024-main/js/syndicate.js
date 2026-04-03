@@ -17,6 +17,20 @@ var postFeedLoading = false;
 var postFeedRenderedMap = {};
 var postFeedAutoTimer = null;
 
+function resolveLithaUrl(relativePath) {
+    var marker = '/Litha2024-main/';
+    var path = String(relativePath || '').replace(/^\/+/, '');
+    var pathname = String(window.location.pathname || '');
+    var markerIndex = pathname.indexOf(marker);
+
+    if (markerIndex !== -1) {
+        var root = pathname.slice(0, markerIndex + marker.length);
+        return window.location.origin + root + path;
+    }
+
+    return new URL('./' + path, window.location.href).toString();
+}
+
 function getSupabaseClient() {
     if (window.__lithaSupabaseClient) {
         return window.__lithaSupabaseClient;
@@ -359,7 +373,8 @@ function lithaPop_cont_signIn() {
         } catch (e) {}
 
         setTimeout(function () {
-            window.location.href = ((window.LITHA_ACCOUNTS_URL) || './accounts/index.html') + '?refK=' + encodeURIComponent(maxrand) + '&redrct=signInwindow';
+            var accountsUrl = (window.LITHA_ACCOUNTS_URL) || resolveLithaUrl('accounts/index.html');
+            window.location.href = accountsUrl + '?refK=' + encodeURIComponent(maxrand) + '&redrct=signInwindow';
         }, 1000);
     });
 }

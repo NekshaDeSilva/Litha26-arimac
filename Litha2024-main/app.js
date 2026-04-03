@@ -7,6 +7,24 @@ var currentAdParked_Linktree2  = 'https://www.daraz.lk/mobile-apps/?spm=a2a0e.ho
 const URLqueryString = window.location.search;
 var urlParams = new URLSearchParams(URLqueryString);
 var recvdFromW_nme = urlParams.get('from');
+
+function resolveMainPublicUrl() {
+    if (window.LITHA_PUBLIC_SHARE_URL) {
+        return String(window.LITHA_PUBLIC_SHARE_URL);
+    }
+
+    var marker = '/Litha2024-main/';
+    var pathname = String(window.location.pathname || '');
+    var markerIndex = pathname.indexOf(marker);
+
+    if (markerIndex !== -1) {
+        var root = pathname.slice(0, markerIndex + marker.length);
+        return window.location.origin + root + 'index.html';
+    }
+
+    return new URL('./index.html', window.location.href).toString();
+}
+
 function checkFordoesListen(){
     if(!recvdFromW_nme){
         //doNothing
@@ -627,17 +645,18 @@ function sendUrlSearchParam_Name(){
     }
 }
 function twitterShareVoid(){
-    window.open('https://twitter.com/intent/tweet?url=..%2FLitha2024-main%2Findex.html&text=ලිත+2026+•+Now+On+Web!+Share+Now.&hashtags=avrudu,SriLanka');
+    var publicUrl = resolveMainPublicUrl();
+    window.open('https://twitter.com/intent/tweet?url=' + encodeURIComponent(publicUrl) + '&text=ලිත+2026+•+Now+On+Web!+Share+Now.&hashtags=avrudu,SriLanka');
 
 }
 function smsShareVoid(){
-    window.open('sms://+94760304894?body=../Litha2024-main/index.html');
+    window.open('sms://+94760304894?body=' + encodeURIComponent(resolveMainPublicUrl()));
 }
 function waShareVoid(){
-    window.open('https://wa.me/?text=../Litha2024-main/index.html');
+    window.open('https://wa.me/?text=' + encodeURIComponent(resolveMainPublicUrl()));
 }
 function fbShareVoid(){
-    window.open('https://www.facebook.com/sharer/sharer.php?u=../Litha2024-main/index.html');
+    window.open('https://www.facebook.com/sharer/sharer.php?u=' + encodeURIComponent(resolveMainPublicUrl()));
 }
 var shareVoidStatusclz = 0
 function shareVoidClz(){
