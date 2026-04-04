@@ -28,7 +28,7 @@ const TRACK_LIBRARY = [
             'https://upload.wikimedia.org/wikipedia/commons/transcoded/f/f3/Jana_Gana_Mana_%28instrumental%29_-_Indian_Armed_Forces_Orchestra.ogg/Jana_Gana_Mana_%28instrumental%29_-_Indian_Armed_Forces_Orchestra.ogg.mp3?download=',
             'https://upload.wikimedia.org/wikipedia/commons/f/f3/Jana_Gana_Mana_%28instrumental%29_-_Indian_Armed_Forces_Orchestra.ogg'
         ],
-        fallback: '../media/track1.wav'
+        fallback: './external/media/track1.wav'
     },
     {
         title: 'කර්ණාටික බාංසුරි • Carnatic Flute',
@@ -38,7 +38,7 @@ const TRACK_LIBRARY = [
             'https://upload.wikimedia.org/wikipedia/commons/transcoded/0/0f/Carnatic_flute.ogg/Carnatic_flute.ogg.mp3?download=',
             'https://upload.wikimedia.org/wikipedia/commons/0/0f/Carnatic_flute.ogg'
         ],
-        fallback: '../media/track2.wav'
+        fallback: './external/media/track2.wav'
     },
     {
         title: 'රාග තිලංග • Raga Tilanga',
@@ -48,7 +48,7 @@ const TRACK_LIBRARY = [
             'https://upload.wikimedia.org/wikipedia/commons/transcoded/c/c1/Raga_Tilanga.ogg/Raga_Tilanga.ogg.mp3?download=',
             'https://upload.wikimedia.org/wikipedia/commons/c/c1/Raga_Tilanga.ogg'
         ],
-        fallback: '../media/track3.wav'
+        fallback: './external/media/track3.wav'
     },
     {
         title: 'රාග භෛරව • Raga Bhairava',
@@ -58,7 +58,7 @@ const TRACK_LIBRARY = [
             'https://upload.wikimedia.org/wikipedia/commons/transcoded/7/73/Raga_Bhairava.ogg/Raga_Bhairava.ogg.mp3?download=',
             'https://upload.wikimedia.org/wikipedia/commons/7/73/Raga_Bhairava.ogg'
         ],
-        fallback: '../media/track4.wav'
+        fallback: './external/media/track4.wav'
     },
     {
         title: 'භෛරවී • Meerut Raga Bhairavi',
@@ -68,7 +68,7 @@ const TRACK_LIBRARY = [
             'https://upload.wikimedia.org/wikipedia/commons/transcoded/d/df/Art_song_from_Meerut_Raga_Bhairavi_%281931%29.ogg/Art_song_from_Meerut_Raga_Bhairavi_%281931%29.ogg.mp3?download=',
             'https://upload.wikimedia.org/wikipedia/commons/d/df/Art_song_from_Meerut_Raga_Bhairavi_%281931%29.ogg'
         ],
-        fallback: '../media/track5.wav'
+        fallback: './external/media/track5.wav'
     },
     {
         title: 'බාංසුරි • Sample 2',
@@ -78,7 +78,7 @@ const TRACK_LIBRARY = [
             'https://upload.wikimedia.org/wikipedia/commons/transcoded/1/1f/Sample2.ogg/Sample2.ogg.mp3?download=',
             'https://upload.wikimedia.org/wikipedia/commons/1/1f/Sample2.ogg'
         ],
-        fallback: '../media/track6.wav'
+        fallback: './external/media/track6.wav'
     }
 ];
 
@@ -626,18 +626,26 @@ function sendUrlSearchParam_Name(){
         window.close();
     }
 }
+function getShareTargetUrl(){
+    try {
+        return window.location.origin + window.location.pathname;
+    } catch (e) {
+        return './index.html';
+    }
+}
 function twitterShareVoid(){
-    window.open('https://twitter.com/intent/tweet?url=..%2FLitha2024-main%2Findex.html&text=ලිත+2026+•+Now+On+Web!+Share+Now.&hashtags=avrudu,SriLanka');
+    var shareUrl = encodeURIComponent(getShareTargetUrl());
+    window.open('https://twitter.com/intent/tweet?url=' + shareUrl + '&text=ලිත+2026+•+Now+On+Web!+Share+Now.&hashtags=avrudu,SriLanka');
 
 }
 function smsShareVoid(){
-    window.open('sms://+94760304894?body=../Litha2024-main/index.html');
+    window.open('sms://+94760304894?body=' + encodeURIComponent(getShareTargetUrl()));
 }
 function waShareVoid(){
-    window.open('https://wa.me/?text=../Litha2024-main/index.html');
+    window.open('https://wa.me/?text=' + encodeURIComponent(getShareTargetUrl()));
 }
 function fbShareVoid(){
-    window.open('https://www.facebook.com/sharer/sharer.php?u=../Litha2024-main/index.html');
+    window.open('https://www.facebook.com/sharer/sharer.php?u=' + encodeURIComponent(getShareTargetUrl()));
 }
 var shareVoidStatusclz = 0
 function shareVoidClz(){
@@ -895,7 +903,7 @@ function stickerMakerL(){
         $('body').append(`<div class="lithaStickerAdOverlay" style="position:fixed;inset:0;background:rgba(0,0,0,.78);z-index:99999;display:flex;align-items:center;justify-content:center;padding:1rem;">
             <div style="width:min(92vw,720px);background:#fff;border-radius:1rem;overflow:hidden;position:relative;box-shadow:0 20px 60px rgba(0,0,0,.35);">
                 <button type="button" onclick="closeStickerAdOverlay()" style="position:absolute;top:.75rem;right:.75rem;z-index:2;border:0;background:#111;color:#fff;border-radius:999px;width:2rem;height:2rem;cursor:pointer;">×</button>
-                <iframe src="../adsyndicationncloud.pages.dev/banner.gif" style="width:100%;height:70vh;border:0;display:block;" draggable="false"></iframe>
+                <iframe src="./external/adsyndicationncloud.pages.dev/banner.gif" style="width:100%;height:70vh;border:0;display:block;" draggable="false"></iframe>
             </div>
         </div>`);
         IUufuv_at = 1;

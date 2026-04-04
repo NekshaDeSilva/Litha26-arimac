@@ -24,7 +24,7 @@ function validateLogin(email, password) {
 
             setTimeout(function(){
                 try { localStorage.setItem('apiAccess', maxrandval || ''); localStorage.setItem('userStatus', e.toString()); localStorage.setItem('lithaUserKey', userData.userKeyId || ''); document.cookie = 'litha_apiAccess=' + encodeURIComponent(maxrandval || '') + '; path=/; max-age=' + (60*60*24*30); document.cookie = 'litha_userStatus=' + encodeURIComponent(e.toString()) + '; path=/; max-age=' + (60*60*24*30); document.cookie = 'litha_userKey=' + encodeURIComponent(userData.userKeyId || '') + '; path=/; max-age=' + (60*60*24*30); } catch(err) {}
-                var targetMain = (window.LITHA_MAIN_URL)||'../Litha2024-main/index.html';
+                var targetMain = (window.LITHA_MAIN_URL)||'../index.html';
                 window.location.href = targetMain + '?referenc=' + encodeURIComponent(e.toString()) + '&apiAccess=' + encodeURIComponent(maxrandval || '') + '&userKey=' + encodeURIComponent(userData.userKeyId || '') + '&rdrctid=sct5'
 
             },1000)
@@ -92,6 +92,13 @@ const password = String(userData.passW || '');
 validateLogin(email, password);
     };
     function checkSignIn(){
+        var normalizedEmail = String((userData && userData.Email) || '').trim().toLowerCase();
+        if (!normalizedEmail) {
+            $('.ncloud-rolechange').html('<div class="errorHappened_div_ncloud-signin-Comp-inner"><img src="./assets//static/exclamation-diamond.svg" alt="error" draggable="false" loading="lazy" style="width: 5rem; margin-bottom: 1rem;"><span>Email is required before creating an account.</span><div onclick="window.location.href = \"\"">Retry</div></div>');
+            return;
+        }
+        userData.Email = normalizedEmail;
+
         function gen(p,v){
                 p = Math.floor(Math.random(Math.random()*99900)*70988770);
                 v = p*Math.floor(Math.random()*6);
